@@ -32,6 +32,9 @@ export class MusicBoxAudioEngine {
   private startTimeReal = 0;
   private totalBeats = 16;
 
+  private scheduledOscillators: (OscillatorNode | AudioBufferSourceNode)[] = [];
+  private scheduledGains: GainNode[] = [];
+
   constructor(settings: MusicBoxSettings) {
     this.settings = settings;
   }
@@ -218,6 +221,9 @@ export class MusicBoxAudioEngine {
 
       clickOsc.start(safeStartTime);
       clickOsc.stop(safeStartTime + 0.012);
+
+      this.scheduledOscillators.push(clickOsc);
+      this.scheduledGains.push(clickGain);
     } catch (e) {
       // Ignore transient errors
     }
@@ -287,6 +293,9 @@ export class MusicBoxAudioEngine {
 
         osc.start(safeStartTime);
         osc.stop(safeStartTime + partialDecay + 0.05);
+
+        this.scheduledOscillators.push(osc);
+        this.scheduledGains.push(gain);
       } catch (e) {
         console.warn('Partial synthesis error:', e);
       }
@@ -322,6 +331,9 @@ export class MusicBoxAudioEngine {
       gain.connect(this.dryGain);
 
       noise.start(safeStartTime);
+
+      this.scheduledOscillators.push(noise);
+      this.scheduledGains.push(gain);
     } catch (e) {
       // Ignore
     }
@@ -439,6 +451,44 @@ export class MusicBoxAudioEngine {
       cancelAnimationFrame(this.timerId);
       this.timerId = null;
     }
+
+    if (this.ctx) {
+      const now = this.ctx.currentTime;
+
+      // Instantly mute all individual note gain nodes
+      for (const g of this.scheduledGains) {
+        try {
+          g.gain.cancelScheduledValues(now);
+          g.gain.setValueAtTime(0, now);
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      // Stop & disconnect all scheduled oscillators and noise sources
+      for (const osc of this.scheduledOscillators) {
+        try {
+          osc.stop(now);
+          osc.disconnect();
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      // Duck dry gain momentarily to eliminate any ringing reverb/decay tails, then restore
+      if (this.dryGain) {
+        try {
+          this.dryGain.gain.cancelScheduledValues(now);
+          this.dryGain.gain.setValueAtTime(0, now);
+          this.dryGain.gain.setValueAtTime(1.0, now + 0.04);
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+
+    this.scheduledOscillators = [];
+    this.scheduledGains = [];
   }
 
   public stop() {

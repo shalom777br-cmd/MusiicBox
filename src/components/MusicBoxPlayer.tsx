@@ -54,6 +54,7 @@ export default function MusicBoxPlayer({
     if (isPlaying) {
       audioEngine.pause();
       setIsPlaying(false);
+      setActiveMidis(new Set());
     } else {
       setIsPlaying(true);
       await audioEngine.playSequence(
