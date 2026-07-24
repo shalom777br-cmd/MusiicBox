@@ -3,6 +3,7 @@ import Header from './components/Header';
 import ScoreUpload from './components/ScoreUpload';
 import MusicBoxControls from './components/MusicBoxControls';
 import MusicBoxPlayer from './components/MusicBoxPlayer';
+import PunchCardEditor from './components/PunchCardEditor';
 import ExportPanel from './components/ExportPanel';
 import AiAnalysisCard from './components/AiAnalysisCard';
 import CopyrightNoticeModal from './components/CopyrightNoticeModal';
@@ -100,6 +101,15 @@ export default function App() {
     }
   };
 
+  // Handle direct punch card note editing
+  const handleUpdateNotes = (updatedNotes: MusicNote[]) => {
+    setRawNotes(updatedNotes);
+    setMeta((prev) => ({
+      ...prev,
+      summary: `パンチカード編集（全 ${updatedNotes.length} 音）`,
+    }));
+  };
+
   // Preview a single tine sound or test interval when clicking sound test/preset
   const handlePreviewTine = async (midi: number) => {
     if (audioEngine) {
@@ -173,6 +183,14 @@ export default function App() {
           meta={meta}
           audioEngine={audioEngine}
           onPreviewNote={handlePreviewTine}
+        />
+
+        {/* Interactive Punch Card Sheet Editor (Add/Remove holes, extract melody) */}
+        <PunchCardEditor
+          notes={displayNotes}
+          onChangeNotes={handleUpdateNotes}
+          audioEngine={audioEngine}
+          settings={settings}
         />
 
         {/* ② Controls & Sound Presets */}

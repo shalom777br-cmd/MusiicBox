@@ -361,15 +361,21 @@ export class MusicBoxAudioEngine {
     const maxEndBeat = notes.reduce((max, n) => Math.max(max, n.startTime + n.duration), 0);
     this.totalBeats = Math.max(maxEndBeat + 2, 16);
 
+    let startBeat = startFromBeat;
+    if (startBeat >= this.totalBeats - 0.1) {
+      startBeat = 0;
+    }
+    this.currentBeat = startBeat;
+
     const bpm = this.settings.tempoBpm;
     const secPerBeat = 60 / bpm;
     const totalDurationSec = this.totalBeats * secPerBeat;
 
     const scheduleOffsetSec = 0.1; // 100ms buffer to guarantee all nodes start in the future
-    this.startTimeReal = ctx.currentTime + scheduleOffsetSec - startFromBeat * secPerBeat;
+    this.startTimeReal = ctx.currentTime + scheduleOffsetSec - startBeat * secPerBeat;
 
     notes.forEach((note) => {
-      if (note.startTime >= startFromBeat) {
+      if (note.startTime >= startBeat) {
         const noteTimeReal = this.startTimeReal + note.startTime * secPerBeat;
         const shiftedMidi = note.midiNumber + this.settings.keyShift;
 
@@ -396,6 +402,9 @@ export class MusicBoxAudioEngine {
 
       if (currentBeat >= this.totalBeats) {
         this.stop();
+        if (this.onProgressCallback) {
+          this.onProgressCallback(0, 0, totalDurationSec);
+        }
         if (this.onEndedCallback) {
           this.onEndedCallback();
         }

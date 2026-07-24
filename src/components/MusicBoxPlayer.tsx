@@ -83,6 +83,8 @@ export default function MusicBoxPlayer({
           },
           onEnded: () => {
             setIsPlaying(false);
+            setCurrentBeat(0);
+            setCurrentTimeSec(0);
             if (isLooping) {
               setTimeout(() => {
                 handleTogglePlay();
@@ -132,6 +134,8 @@ export default function MusicBoxPlayer({
           },
           onEnded: () => {
             setIsPlaying(false);
+            setCurrentBeat(0);
+            setCurrentTimeSec(0);
           },
         },
         targetBeat

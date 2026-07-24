@@ -35,7 +35,7 @@ export default function Header({ onOpenCopyrightModal, onTestSound }: HeaderProp
           <div>
             <div className="flex items-center space-x-2.5">
               <h1 className="text-2xl sm:text-3xl font-serif italic tracking-wide text-[#c19a6b]">
-                Céleste Music Box Generator
+                ジョアンナのオルゴール
               </h1>
               <span className="text-[10px] uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-[#2d1b14] border border-[#3d251a] text-[#c19a6b]">
                 オルゴール生成
