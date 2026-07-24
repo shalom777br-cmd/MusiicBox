@@ -1,0 +1,6 @@
+{
+  "name": "Music Box Generator",
+  "description": "楽譜（PDF・画像・MusicXML・MIDI）を読み込み、オルゴール向けに音域・旋律を自動最適化して再生・音色変換・保存できるオルゴール生成アプリ",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

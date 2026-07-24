@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-dark: #1c0f0a;
+    --card-dark: #2d1b14;
+    --border-dark: #3d251a;
+    --accent-gold: #c19a6b;
+    --text-cream: #e5d3b3;
+  }
+
+  body {
+    background-color: #1c0f0a;
+    color: #e5d3b3;
+  }
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 12s linear infinite;
+}
+
+.shadow-brass-glow {
+  box-shadow: 0 0 20px rgba(193, 154, 107, 0.25);
+}
