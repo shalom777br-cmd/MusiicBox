@@ -83,45 +83,45 @@ export default function TopWavPlayer({ notes, settings, meta }: TopWavPlayerProp
   };
 
   return (
-    <div className="w-full bg-gradient-to-r from-[#2d1b14] via-[#382017] to-[#2d1b14] border-2 border-[#c19a6b]/50 rounded-3xl p-4 sm:p-5 shadow-2xl backdrop-blur-md">
-      <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+    <div className="max-w-3xl mx-auto w-full bg-gradient-to-r from-[#2d1b14] via-[#382017] to-[#2d1b14] border-2 border-[#c19a6b]/50 rounded-2xl p-3 sm:p-4 shadow-xl backdrop-blur-md">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
         {/* Left Side: Play Button & Main Header */}
-        <div className="flex items-center space-x-4 w-full md:w-auto">
+        <div className="flex items-center space-x-3 w-full sm:w-auto">
           <button
             onClick={handleTogglePlay}
             disabled={isGenerating || notes.length === 0}
-            className="w-14 h-14 rounded-full bg-gradient-to-tr from-[#c19a6b] to-[#e5d3b3] hover:from-[#d4ac7d] hover:to-[#f0e2ca] text-[#1c0f0a] flex items-center justify-center shrink-0 shadow-lg transition-transform active:scale-95 disabled:opacity-50 cursor-pointer"
+            className="w-11 h-11 rounded-full bg-gradient-to-tr from-[#c19a6b] to-[#e5d3b3] hover:from-[#d4ac7d] hover:to-[#f0e2ca] text-[#1c0f0a] flex items-center justify-center shrink-0 shadow-md transition-transform active:scale-95 disabled:opacity-50 cursor-pointer"
             title="生成されたWAV音源を試聴再生"
           >
             {isGenerating ? (
-              <Loader2 className="w-6 h-6 animate-spin" />
+              <Loader2 className="w-5 h-5 animate-spin" />
             ) : isPlaying ? (
-              <Pause className="w-6 h-6 fill-current" />
+              <Pause className="w-5 h-5 fill-current" />
             ) : (
-              <Play className="w-6 h-6 fill-current ml-1" />
+              <Play className="w-5 h-5 fill-current ml-0.5" />
             )}
           </button>
 
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center space-x-2">
-              <Sparkles className="w-4 h-4 text-[#c19a6b]" />
-              <h2 className="text-base sm:text-lg font-bold text-[#e5d3b3] tracking-wide">
+              <Sparkles className="w-3.5 h-3.5 text-[#c19a6b] shrink-0" />
+              <h2 className="text-sm sm:text-base font-bold text-[#e5d3b3] tracking-wide truncate">
                 生成されたWAV音源の試聴再生
               </h2>
-              <span className="text-[10px] px-2 py-0.5 bg-[#1c0f0a] border border-[#c19a6b]/40 text-[#c19a6b] rounded-full font-semibold">
+              <span className="text-[10px] px-1.5 py-0.5 bg-[#1c0f0a] border border-[#c19a6b]/40 text-[#c19a6b] rounded-full font-semibold shrink-0">
                 最優先試聴
               </span>
             </div>
-            <p className="text-xs text-[#e5d3b3]/80 mt-0.5">
-              {meta.title ? `曲名: 「${meta.title}」` : '選択中の楽曲'} | 音色: {settings.timbre} | 音符数: {notes.length}音
+            <p className="text-[11px] text-[#e5d3b3]/80 mt-0.5 truncate">
+              {meta.title ? `曲名: 「${meta.title}」` : '選択中の楽曲'} | 音色: {settings.timbre} | {notes.length}音
             </p>
           </div>
         </div>
 
         {/* Center / Right Side: Native Audio Player & Download Button */}
-        <div className="flex flex-wrap items-center justify-between md:justify-end w-full md:w-auto gap-3">
+        <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-2">
           {/* HTML5 Audio Player */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center">
             {wavUrl ? (
               <audio
                 ref={audioRef}
@@ -130,15 +130,15 @@ export default function TopWavPlayer({ notes, settings, meta }: TopWavPlayerProp
                 onPause={() => setIsPlaying(false)}
                 onPlay={() => setIsPlaying(true)}
                 controls
-                className="h-9 w-48 sm:w-60 accent-[#c19a6b]"
+                className="h-8 w-44 sm:w-52 accent-[#c19a6b]"
               />
             ) : (
               <button
                 onClick={handleTogglePlay}
                 disabled={isGenerating || notes.length === 0}
-                className="flex items-center space-x-1.5 text-xs px-3.5 py-2 rounded-xl bg-[#1c0f0a] border border-[#3d251a] hover:border-[#c19a6b] text-[#c19a6b] transition-all cursor-pointer disabled:opacity-50"
+                className="flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#1c0f0a] border border-[#3d251a] hover:border-[#c19a6b] text-[#c19a6b] transition-all cursor-pointer disabled:opacity-50"
               >
-                <Volume2 className="w-4 h-4" />
+                <Volume2 className="w-3.5 h-3.5" />
                 <span>{isGenerating ? 'WAV生成中...' : 'WAV音源をロードして試聴'}</span>
               </button>
             )}
@@ -148,9 +148,9 @@ export default function TopWavPlayer({ notes, settings, meta }: TopWavPlayerProp
           <button
             onClick={handleDownload}
             disabled={notes.length === 0}
-            className="flex items-center space-x-2 text-xs px-4 py-2.5 rounded-xl bg-[#c19a6b] hover:bg-[#d4ac7d] text-[#1c0f0a] font-bold transition-all shadow-md active:scale-95 cursor-pointer disabled:opacity-50"
+            className="flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#c19a6b] hover:bg-[#d4ac7d] text-[#1c0f0a] font-bold transition-all shadow-md active:scale-95 cursor-pointer disabled:opacity-50 shrink-0"
           >
-            <Download className="w-4 h-4" />
+            <Download className="w-3.5 h-3.5" />
             <span>WAV保存</span>
           </button>
         </div>
