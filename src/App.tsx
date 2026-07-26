@@ -180,55 +180,63 @@ export default function App() {
         onTestSound={() => handlePreviewTine(72)}
       />
 
-      {/* Main Content Layout */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-8 mt-6 space-y-6">
-        {/* ① Sheet Music Upload & Sample Selector */}
-        <ScoreUpload
-          onScoreLoaded={handleScoreLoaded}
-          isLoading={isLoading}
-          setIsLoading={setIsLoading}
-          activeSongId={activeSongId}
-        />
+      {/* Main Content Layout - Tablet & Desktop 2-Column Pillar Grid */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+          {/* Left Pillar: Input, Controls, Export, & AI Commentary */}
+          <div className="md:col-span-5 space-y-6">
+            {/* ① Sheet Music Upload & Sample Selector */}
+            <ScoreUpload
+              onScoreLoaded={handleScoreLoaded}
+              isLoading={isLoading}
+              setIsLoading={setIsLoading}
+              activeSongId={activeSongId}
+            />
 
-        {/* ② Controls & Sound Presets (Placed directly beneath score upload) */}
-        <MusicBoxControls
-          settings={settings}
-          onUpdateSettings={setSettings}
-          onPreviewTine={handlePreviewTine}
-          onRunAiOptimization={handleRunAiOptimization}
-          isAiOptimizing={isAiOptimizing}
-          notesCount={displayNotes.length}
-        />
+            {/* ② Controls & Sound Presets */}
+            <MusicBoxControls
+              settings={settings}
+              onUpdateSettings={setSettings}
+              onPreviewTine={handlePreviewTine}
+              onRunAiOptimization={handleRunAiOptimization}
+              isAiOptimizing={isAiOptimizing}
+              notesCount={displayNotes.length}
+            />
 
-        {/* Visualizer & Music Box Mechanical Player */}
-        <MusicBoxPlayer
-          notes={displayNotes}
-          settings={settings}
-          meta={meta}
-          audioEngine={audioEngine}
-          onPreviewNote={handlePreviewTine}
-        />
+            {/* ③ Export & Downloads (WAV Preview & Files) */}
+            <ExportPanel
+              notes={displayNotes}
+              settings={settings}
+              meta={meta}
+            />
 
-        {/* Interactive Punch Card Sheet Editor (Add/Remove holes, extract melody) */}
-        <PunchCardEditor
-          notes={displayNotes}
-          onChangeNotes={handleUpdateNotes}
-          audioEngine={audioEngine}
-          settings={settings}
-        />
+            {/* ④ AI Analysis & Commentary Card */}
+            <AiAnalysisCard
+              meta={meta}
+              commentary={aiCommentary}
+            />
+          </div>
 
-        {/* ③ Export & Downloads */}
-        <ExportPanel
-          notes={displayNotes}
-          settings={settings}
-          meta={meta}
-        />
+          {/* Right Pillar: Player Visualizer & Interactive Punch Card Editor */}
+          <div className="md:col-span-7 space-y-6 md:sticky md:top-6">
+            {/* Visualizer & Music Box Mechanical Player */}
+            <MusicBoxPlayer
+              notes={displayNotes}
+              settings={settings}
+              meta={meta}
+              audioEngine={audioEngine}
+              onPreviewNote={handlePreviewTine}
+            />
 
-        {/* ④ AI Analysis & Commentary Card */}
-        <AiAnalysisCard
-          meta={meta}
-          commentary={aiCommentary}
-        />
+            {/* Interactive Punch Card Sheet Editor */}
+            <PunchCardEditor
+              notes={displayNotes}
+              onChangeNotes={handleUpdateNotes}
+              audioEngine={audioEngine}
+              settings={settings}
+            />
+          </div>
+        </div>
       </main>
 
       {/* Footer with Sound Test and Copyright Guidelines */}
