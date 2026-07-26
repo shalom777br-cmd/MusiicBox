@@ -1,12 +1,11 @@
 import React from 'react';
-import { Music2, ShieldCheck, Sparkles, Volume2 } from 'lucide-react';
+import { Play, Sparkles } from 'lucide-react';
 
 interface HeaderProps {
-  onOpenCopyrightModal: () => void;
   onTestSound?: () => void;
 }
 
-export default function Header({ onOpenCopyrightModal, onTestSound }: HeaderProps) {
+export default function Header({ onTestSound }: HeaderProps) {
   const [isPlayingTest, setIsPlayingTest] = React.useState(false);
 
   const handleClickTest = () => {
@@ -15,7 +14,7 @@ export default function Header({ onOpenCopyrightModal, onTestSound }: HeaderProp
       onTestSound();
       setTimeout(() => {
         setIsPlayingTest(false);
-      }, 800);
+      }, 1000);
     }
   };
 
@@ -47,33 +46,24 @@ export default function Header({ onOpenCopyrightModal, onTestSound }: HeaderProp
           </div>
         </div>
 
-        {/* Action badges & Copyright notice button */}
-        <div className="flex items-center space-x-3">
-          {onTestSound && (
-            <button
-              onClick={handleClickTest}
-              className={`flex items-center space-x-1.5 text-xs px-3.5 py-1.5 rounded-full font-medium transition-all shadow-md cursor-pointer active:scale-95 ${
-                isPlayingTest
-                  ? 'bg-[#e5d3b3] text-[#1c0f0a] scale-105'
-                  : 'bg-[#c19a6b] hover:bg-[#d4ad7d] text-[#1c0f0a]'
-              }`}
-              title="クリックして音を鳴らす・有効化する"
-            >
-              <Volume2 className={`w-4 h-4 text-[#1c0f0a] ${isPlayingTest ? 'animate-bounce' : ''}`} />
-              <span>{isPlayingTest ? '♪ 再生テスト中...' : '🔔 音声テスト / 有効化'}</span>
-            </button>
-          )}
-
+        {/* Top Header Action: Safari 互換 試聴再生ボタン */}
+        {onTestSound && (
           <button
-            onClick={onOpenCopyrightModal}
-            className="flex items-center space-x-1.5 text-xs px-3.5 py-1.5 rounded-full bg-[#2d1b14] hover:bg-[#3d251a] border border-[#3d251a] text-[#c19a6b] hover:text-[#e5d3b3] transition-all shadow-sm cursor-pointer"
+            onClick={handleClickTest}
+            className={`flex items-center space-x-2 text-xs px-4 py-2 rounded-full font-bold transition-all shadow-md cursor-pointer active:scale-95 ${
+              isPlayingTest
+                ? 'bg-[#e5d3b3] text-[#1c0f0a] scale-105'
+                : 'bg-[#c19a6b] hover:bg-[#d4ad7d] text-[#1c0f0a]'
+            }`}
+            title="Safari / iOS対応の試聴再生・音声を有効化"
           >
-            <ShieldCheck className="w-3.5 h-3.5 text-[#c19a6b]" />
-            <span>著作権・ご利用ガイド</span>
+            <Play className="w-3.5 h-3.5 fill-current" />
+            <span>{isPlayingTest ? '♪ 試聴テスト再生中...' : '▶ Safari 試聴再生・音声有効化'}</span>
           </button>
-        </div>
+        )}
       </div>
     </header>
   );
 }
+
 

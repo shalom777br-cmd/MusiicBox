@@ -15,11 +15,78 @@ const ai = new GoogleGenAI({
   },
 });
 
+function safeParseJson<T = any>(text: string | undefined | null): T | null {
+  if (!text) return null;
+  let cleaned = text.trim();
+  // Remove markdown code fence if present
+  cleaned = cleaned.replace(/^```(?:json)?\s*/gi, "").replace(/\s*```$/gi, "").trim();
+  if (!cleaned) return null;
+
+  // 1. Try standard JSON parse first
+  try {
+    return JSON.parse(cleaned) as T;
+  } catch (_) {
+    // Proceed to repair strategy
+  }
+
+  // 2. Attempt to repair truncated JSON (common when maxOutputTokens is reached)
+  let idx = cleaned.lastIndexOf("}");
+  while (idx > 0) {
+    const candidate = cleaned.slice(0, idx + 1);
+    let openBraces = 0;
+    let openBrackets = 0;
+    let inString = false;
+    let isEscaped = false;
+
+    for (let i = 0; i < candidate.length; i++) {
+      const ch = candidate[i];
+      if (isEscaped) {
+        isEscaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        isEscaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (!inString) {
+        if (ch === "{") openBraces++;
+        else if (ch === "}") openBraces--;
+        else if (ch === "[") openBrackets++;
+        else if (ch === "]") openBrackets--;
+      }
+    }
+
+    if (openBraces >= 0 && openBrackets >= 0) {
+      let fix = candidate;
+      for (let i = 0; i < openBrackets; i++) fix += "]";
+      for (let i = 0; i < openBraces; i++) fix += "}";
+
+      try {
+        const parsed = JSON.parse(fix);
+        if (parsed && typeof parsed === "object") {
+          console.log(`Successfully repaired truncated JSON at character ${idx} (recovered partial notes).`);
+          return parsed as T;
+        }
+      } catch (_) {}
+    }
+
+    idx = cleaned.lastIndexOf("}", idx - 1);
+  }
+
+  console.error("JSON parse failure on text length:", text.length);
+  return null;
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
   app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
   // Health check
   app.get("/api/health", (req, res) => {
@@ -32,28 +99,39 @@ async function startServer() {
       const { fileData, mimeType, fileName, textContent } = req.body;
 
       if (!fileData && !textContent) {
-        return res.status(400).json({ error: "Missing file data or content" });
+        return res.status(400).json({ success: false, error: "Missing file data or content" });
       }
 
       console.log(`Analyzing music sheet/file: ${fileName || "text data"}`);
 
       const prompt = `
-You are an expert musicologist and sheet music OCR engine specialized in extracting musical note data for music box arrangements.
-Analyze the provided musical score (image, PDF, XML, or text notation) and output a clean JSON structure containing the note sequence.
+You are an ultra-precise sheet music OCR and musicology engine specialized in extracting ALL musical note data across ALL measures for music box arrangements.
+Analyze the provided musical score (image, PDF, XML, or text notation) and output a clean, exhaustive JSON structure containing every single note sequence across ALL measures from start to finish without truncating or stopping early.
 
-Requirements for Music Box conversion:
-1. Extract notes with pitch name (e.g., "C4", "D#4", "G5"), MIDI note number (e.g. 60 for C4), start time in beats (0, 1, 1.5, 2, etc.), duration in beats (e.g. 0.5, 1, 2), velocity (0-127), and whether it belongs to the primary melody.
-2. Identify title, composer, time signature (e.g. "4/4", "3/4"), and estimated tempo in BPM.
-3. Provide a brief explanation in Japanese of how this score was parsed and suggestions for music box arrangement.
+MANDATORY EXHAUSTIVE OCR REQUIREMENTS FOR LONG SCORES:
+1. FULL SCORE COVERAGE & ALL MEASURES (全小節・最初から最後まで完全スキャン):
+   - Thoroughly scan the ENTIRE score from Measure 1 to the final measure, covering every single system, line, and page.
+   - Do NOT stop parsing early or summarize later measures. Parse every single measure sequentially.
+2. EXHAUSTIVE NOTE EXTRACTION (全音符・全和音・全声部の漏れなし完全抽出):
+   - You MUST extract EVERY SINGLE NOTEHEAD visible on both Treble Staff (Right Hand) and Bass Staff (Left Hand).
+   - DO NOT simplify, drop, or summarize harmony notes, inner voices, counterpoint, or bass lines.
+   - For CHORDS (multiple noteheads stacked vertically on the same beat): create a separate note object for EACH notehead, all sharing the EXACT same "startTime".
+3. ACCIDENTALS & CLEFS (変化記号・調号の全反映):
+   - Correctly process key signatures (sharps/flats at measure start) and in-measure accidental signs (#, b, natural) to assign accurate pitch names (e.g. "C#4", "Eb5", "F4") and exact MIDI note numbers.
+4. RHYTHMIC TIMING & BEATS (正確な拍位置と音価):
+   - Assign "startTime" in exact beats (0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, etc.), accounting for sixteenth notes (0.25 beat), eighth notes (0.5 beat), dotted notes, triplets, and ties.
+5. METADATA:
+   - Extract Title, Composer, Time Signature (e.g., "4/4", "3/4", "6/8"), Key Signature, and estimated Tempo in BPM.
+   - Provide a brief summary in Japanese ("summary") explaining that all measures, voices, chords, and bass notes were fully extracted across the entire piece.
 
 Return ONLY JSON matching this structure:
 {
   "title": "Song Title",
-  "composer": "Composer Name or Public Domain",
+  "composer": "Composer Name",
   "timeSignature": "4/4",
   "bpm": 72,
-  "keySignature": "C major",
-  "summary": "解析概要とオルゴール化のアドバイス",
+  "keySignature": "C Major",
+  "summary": "全小節・全和音・ト音/ヘ音記号のすべての音符を漏れなく最後まで完全抽出しました。",
   "notes": [
     {
       "pitch": "C4",
@@ -84,6 +162,7 @@ Return ONLY JSON matching this structure:
         model: "gemini-3.6-flash",
         contents: { parts: contentsParts },
         config: {
+          maxOutputTokens: 8192,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -115,13 +194,27 @@ Return ONLY JSON matching this structure:
         },
       });
 
-      const parsedData = JSON.parse(response.text || "{}");
+      const parsedData = safeParseJson(response.text);
+      if (!parsedData) {
+        console.error("Failed to parse Gemini response for /api/parse-music. Raw response.text:", response.text);
+        return res.status(500).json({
+          success: false,
+          error: "楽譜の解析結果をJSONとして読み込めませんでした。もう一度お試しか、別の画像ファイルをお試しください。",
+        });
+      }
+
       res.json({ success: true, data: parsedData });
     } catch (error: any) {
       console.error("Error in /api/parse-music:", error);
+      let errorMessage = "楽譜の解析中にエラーが発生しました";
+      if (error?.status === 503 || error?.message?.includes("503") || error?.message?.includes("UNAVAILABLE") || error?.message?.includes("demand")) {
+        errorMessage = "現在AIサーバーの負荷が高まっています。少し時間をおいて再度お試しください。";
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
       res.status(500).json({
         success: false,
-        error: error?.message || "楽譜の解析中にエラーが発生しました",
+        error: errorMessage,
       });
     }
   });
@@ -163,7 +256,7 @@ Return ONLY JSON:
 
       const response = await ai.models.generateContent({
         model: "gemini-3.6-flash",
-        contents: `${prompt}\nInput notes JSON:\n${JSON.stringify(notes?.slice(0, 150) || [])}`,
+        contents: `${prompt}\nInput notes JSON:\n${JSON.stringify(notes?.slice(0, 500) || [])}`,
         config: {
           responseMimeType: "application/json",
           responseSchema: {
@@ -192,13 +285,27 @@ Return ONLY JSON:
         },
       });
 
-      const resultData = JSON.parse(response.text || "{}");
+      const resultData = safeParseJson(response.text);
+      if (!resultData) {
+        console.error("Failed to parse Gemini response for /api/optimize-musicbox. Raw response.text:", response.text);
+        return res.status(500).json({
+          success: false,
+          error: "AI最適化結果をJSONとして読み込めませんでした。再度お試しください。",
+        });
+      }
+
       res.json({ success: true, data: resultData });
     } catch (error: any) {
       console.error("Error in /api/optimize-musicbox:", error);
+      let errorMessage = "AI最適化処理中にエラーが発生しました";
+      if (error?.status === 503 || error?.message?.includes("503") || error?.message?.includes("UNAVAILABLE") || error?.message?.includes("demand")) {
+        errorMessage = "現在AIサーバーの負荷が高まっています。少し時間をおいて再度お試しください。";
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
       res.status(500).json({
         success: false,
-        error: error?.message || "AI最適化処理中にエラーが発生しました",
+        error: errorMessage,
       });
     }
   });

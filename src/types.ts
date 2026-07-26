@@ -2,7 +2,7 @@
  * Music Box Generator Types
  */
 
-export type TimbreType = 'classic' | 'antique' | 'glass' | 'crystal' | 'wooden';
+export type TimbreType = 'wooden' | 'classic';
 
 export type CombType = 18 | 30 | 50;
 

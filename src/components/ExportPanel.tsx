@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Download,
   FileAudio,
@@ -6,8 +6,10 @@ import {
   Music,
   Check,
   Loader2,
-  Sparkles,
-  Share2,
+  Play,
+  Pause,
+  Volume2,
+  Info,
 } from 'lucide-react';
 import { MusicNote, MusicBoxSettings, ScoreMeta } from '../types';
 import { generateMIDI } from '../utils/musicParsers';
@@ -22,6 +24,11 @@ interface ExportPanelProps {
 export default function ExportPanel({ notes, settings, meta }: ExportPanelProps) {
   const [isExportingWav, setIsExportingWav] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState<string | null>(null);
+
+  // WAV Preview State
+  const [wavAudioUrl, setWavAudioUrl] = useState<string | null>(null);
+  const [isPlayingWav, setIsPlayingWav] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const cleanFileName = (meta.title || 'MusicBox').replace(/[/\\?%*:|"<>]/g, '_');
 
@@ -47,6 +54,23 @@ export default function ExportPanel({ notes, settings, meta }: ExportPanelProps)
     }
   };
 
+  // Generate WAV Blob and create URL for preview & download
+  const generateWav = async (): Promise<Blob | null> => {
+    if (notes.length === 0) return null;
+    setIsExportingWav(true);
+    try {
+      const wavBlob = await MusicBoxAudioEngine.renderToWavBlob(notes, settings);
+      const url = URL.createObjectURL(wavBlob);
+      setWavAudioUrl(url);
+      return wavBlob;
+    } catch (err) {
+      console.error('WAV generation error:', err);
+      return null;
+    } finally {
+      setIsExportingWav(false);
+    }
+  };
+
   // Export High-Quality WAV Audio File (.wav)
   const handleDownloadWAV = async () => {
     if (notes.length === 0) return;
@@ -61,7 +85,6 @@ export default function ExportPanel({ notes, settings, meta }: ExportPanelProps)
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
 
       setDownloadSuccess('高音質WAV音源をダウンロードしました');
       setTimeout(() => setDownloadSuccess(null), 3000);
@@ -69,6 +92,32 @@ export default function ExportPanel({ notes, settings, meta }: ExportPanelProps)
       console.error('WAV export error:', err);
     } finally {
       setIsExportingWav(false);
+    }
+  };
+
+  // Toggle WAV Preview Playback (Safari compatible)
+  const handleToggleWavPreview = async () => {
+    if (!wavAudioUrl) {
+      const blob = await generateWav();
+      if (!blob) return;
+    }
+
+    if (audioRef.current) {
+      if (isPlayingWav) {
+        audioRef.current.pause();
+        setIsPlayingWav(false);
+      } else {
+        try {
+          // Play HTML Audio element (user gesture stack)
+          await audioRef.current.play();
+          setIsPlayingWav(true);
+        } catch (e) {
+          console.warn('WAV element play error in Safari, retrying:', e);
+          // Retry playback
+          audioRef.current.load();
+          audioRef.current.play().then(() => setIsPlayingWav(true)).catch(() => {});
+        }
+      }
     }
   };
 
@@ -91,7 +140,7 @@ export default function ExportPanel({ notes, settings, meta }: ExportPanelProps)
   };
 
   return (
-    <div className="bg-[#2d1b14] border border-[#3d251a] rounded-[32px] p-6 sm:p-8 shadow-xl backdrop-blur-md space-y-5">
+    <div className="bg-[#2d1b14] border border-[#3d251a] rounded-[32px] p-6 sm:p-8 shadow-xl backdrop-blur-md space-y-6">
       {/* Title Header */}
       <div className="flex items-center justify-between border-b border-[#3d251a] pb-4">
         <div className="flex items-center space-x-3">
@@ -100,7 +149,7 @@ export default function ExportPanel({ notes, settings, meta }: ExportPanelProps)
           </div>
           <div>
             <h2 className="text-lg font-serif italic text-[#c19a6b]">③ オルゴール音源・データのダウンロード</h2>
-            <p className="text-xs text-[#e5d3b3]/60">WAV高音質オーディオ、標準MIDI、JSON楽譜ファイルの保存</p>
+            <p className="text-xs text-[#e5d3b3]/60">WAV高音質オーディオ、標準MIDI、JSON楽譜ファイルの保存・試聴</p>
           </div>
         </div>
 
@@ -108,6 +157,68 @@ export default function ExportPanel({ notes, settings, meta }: ExportPanelProps)
           <div className="flex items-center space-x-2 text-xs text-[#c19a6b] bg-[#1c0f0a] px-3.5 py-1.5 rounded-full border border-[#3d251a]">
             <Check className="w-3.5 h-3.5 text-[#c19a6b]" />
             <span>{downloadSuccess}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Safari Compatibility Notice */}
+      <div className="p-3.5 rounded-2xl bg-[#1c0f0a]/80 border border-[#3d251a] flex items-start space-x-3 text-xs text-[#e5d3b3]/80">
+        <Info className="w-4 h-4 text-[#c19a6b] shrink-0 mt-0.5" />
+        <div className="space-y-1">
+          <p className="font-semibold text-[#c19a6b]">Safari / iOS で音が出ない場合のチェック:</p>
+          <ul className="list-disc list-inside space-y-0.5 text-[11px] text-[#e5d3b3]/70">
+            <li>iPhone / iPad の「マナーモード（サイレントスイッチ）」がONの場合、Safariは消音になります。サイドスイッチを解除して音量を上げてください。</li>
+            <li>下の「WAV試聴再生」または「再生」ボタンを押すとWeb Audioエンジンが自動解凍されます。</li>
+          </ul>
+        </div>
+      </div>
+
+      {/* Embedded WAV Audio Player / Preview Section (Placed at TOP) */}
+      <div className="p-4 rounded-2xl bg-[#1c0f0a] border border-[#3d251a] flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center space-x-3 w-full sm:w-auto">
+          <button
+            onClick={handleToggleWavPreview}
+            disabled={isExportingWav || notes.length === 0}
+            className="w-12 h-12 rounded-full bg-[#c19a6b] hover:bg-[#d4ac7d] text-[#1c0f0a] flex items-center justify-center shrink-0 transition-transform active:scale-95 shadow-md disabled:opacity-50 cursor-pointer"
+            title="WAV音源をブラウザで試聴再生"
+          >
+            {isExportingWav ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : isPlayingWav ? (
+              <Pause className="w-5 h-5 fill-current" />
+            ) : (
+              <Play className="w-5 h-5 fill-current ml-0.5" />
+            )}
+          </button>
+          <div>
+            <div className="text-sm font-bold text-[#e5d3b3] flex items-center space-x-2">
+              <span>生成されたWAV音源の試聴再生</span>
+              <span className="text-[10px] px-2 py-0.5 bg-[#2d1b14] border border-[#3d251a] text-[#c19a6b] rounded-full">
+                Safari 互換
+              </span>
+            </div>
+            <p className="text-xs text-[#e5d3b3]/60">
+              {wavAudioUrl
+                ? isPlayingWav
+                  ? '再生中...'
+                  : 'ボタンを押して作成したWAV音源を再生'
+                : 'ボタンを押すとWAV音源を生成してブラウザ内で直接試聴できます'}
+            </p>
+          </div>
+        </div>
+
+        {/* Hidden / Visible HTML5 Audio Element for Safari Native Streaming */}
+        {wavAudioUrl && (
+          <div className="w-full sm:w-auto flex items-center space-x-2">
+            <audio
+              ref={audioRef}
+              src={wavAudioUrl}
+              onEnded={() => setIsPlayingWav(false)}
+              onPause={() => setIsPlayingWav(false)}
+              onPlay={() => setIsPlayingWav(true)}
+              className="h-8 max-w-[240px] rounded-lg accent-[#c19a6b]"
+              controls
+            />
           </div>
         )}
       </div>
@@ -187,3 +298,4 @@ export default function ExportPanel({ notes, settings, meta }: ExportPanelProps)
     </div>
   );
 }
+

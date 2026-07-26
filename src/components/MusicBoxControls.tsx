@@ -24,11 +24,8 @@ interface MusicBoxControlsProps {
 }
 
 const TIMBRE_OPTIONS: { id: TimbreType; label: string; desc: string; previewMidi: number; color: string }[] = [
-  { id: 'classic', label: 'クラシック', desc: '伝統的な金属弁と木製共鳴箱の澄んだ響き', previewMidi: 72, color: 'from-amber-700 to-amber-900' },
-  { id: 'antique', label: 'アンティーク', desc: '温かみのあるレトロなアンティークメタル', previewMidi: 67, color: 'from-amber-800 to-stone-900' },
-  { id: 'glass', label: 'ガラス', desc: '晶瑩な高音域が輝くクリスタルガラス', previewMidi: 84, color: 'from-cyan-900 to-blue-950' },
-  { id: 'crystal', label: 'クリスタル', desc: '余韻が美しく伸びる神秘的なベル音', previewMidi: 79, color: 'from-purple-900 to-amber-950' },
-  { id: 'wooden', label: '木製', desc: '丸みのある温かい木のオルゴール体', previewMidi: 60, color: 'from-orange-950 to-amber-950' },
+  { id: 'wooden', label: '木製', desc: '丸みのある温かい木のオルゴール体（標準）', previewMidi: 60, color: 'from-orange-950 to-amber-950' },
+  { id: 'classic', label: 'クラシック', desc: '伝統的な金属弁と共鳴箱の澄んだ響き', previewMidi: 72, color: 'from-amber-700 to-amber-900' },
 ];
 
 const COMB_OPTIONS: { count: CombType; label: string; desc: string }[] = [
@@ -89,7 +86,7 @@ export default function MusicBoxControls({
           <span className="text-[10px] text-[#e5d3b3]/50">※タップして試聴できます</span>
         </label>
 
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {TIMBRE_OPTIONS.map((t) => {
             const isSelected = settings.timbre === t.id;
             return (

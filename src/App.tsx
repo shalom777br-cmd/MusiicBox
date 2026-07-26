@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Header from './components/Header';
+import Footer from './components/Footer';
 import ScoreUpload from './components/ScoreUpload';
 import MusicBoxControls from './components/MusicBoxControls';
 import MusicBoxPlayer from './components/MusicBoxPlayer';
@@ -35,13 +36,13 @@ export default function App() {
 
   // Music Box Settings
   const [settings, setSettings] = useState<MusicBoxSettings>({
-    timbre: 'classic',
+    timbre: 'wooden',
     tempoBpm: defaultSample.bpm,
     keyShift: 0,
     combCount: 18,
-    removeChords: true,
-    removeBass: true,
-    simplifyTrills: true,
+    removeChords: false,
+    removeBass: false,
+    simplifyTrills: false,
     reverbLevel: 0.45,
     mechanicalNoise: true,
     relaxationMode: false,
@@ -111,14 +112,20 @@ export default function App() {
   };
 
   // Preview a single tine sound or test interval when clicking sound test/preset
-  const handlePreviewTine = async (midi: number) => {
-    if (audioEngine) {
-      await audioEngine.ensureAudioRunning();
-      audioEngine.playSingleNote(midi);
-      setTimeout(() => {
-        audioEngine.playSingleNote(midi + 7); // Perfect 5th interval (C5 -> G5)
-      }, 160);
+  const handlePreviewTine = (midi: number) => {
+    let engine = audioEngine;
+    if (!engine) {
+      engine = new MusicBoxAudioEngine(settings);
+      setAudioEngine(engine);
     }
+    engine.unlockAudio();
+    engine.playSingleNote(midi);
+    setTimeout(() => {
+      engine?.playSingleNote(midi + 7); // Perfect 5th interval (G5)
+    }, 150);
+    setTimeout(() => {
+      engine?.playSingleNote(midi + 12); // Octave interval (C6)
+    }, 300);
   };
 
   // Call Express server-side Gemini API for AI auto-optimization
@@ -138,8 +145,16 @@ export default function App() {
         }),
       });
 
-      const resData = await response.json();
-      if (resData.success && resData.data) {
+      const resText = await response.text();
+      let resData: any = null;
+      try {
+        resData = JSON.parse(resText);
+      } catch (jsonErr) {
+        console.error('Non-JSON response from /api/optimize-musicbox:', resText);
+        return;
+      }
+
+      if (resData && resData.success && resData.data) {
         const { optimizedNotes, arrangementCommentary } = resData.data;
         if (optimizedNotes && optimizedNotes.length > 0) {
           setRawNotes(optimizedNotes);
@@ -162,7 +177,6 @@ export default function App() {
 
       {/* Application Header */}
       <Header
-        onOpenCopyrightModal={() => setIsCopyrightModalOpen(true)}
         onTestSound={() => handlePreviewTine(72)}
       />
 
@@ -174,6 +188,16 @@ export default function App() {
           isLoading={isLoading}
           setIsLoading={setIsLoading}
           activeSongId={activeSongId}
+        />
+
+        {/* ② Controls & Sound Presets (Placed directly beneath score upload) */}
+        <MusicBoxControls
+          settings={settings}
+          onUpdateSettings={setSettings}
+          onPreviewTine={handlePreviewTine}
+          onRunAiOptimization={handleRunAiOptimization}
+          isAiOptimizing={isAiOptimizing}
+          notesCount={displayNotes.length}
         />
 
         {/* Visualizer & Music Box Mechanical Player */}
@@ -193,16 +217,6 @@ export default function App() {
           settings={settings}
         />
 
-        {/* ② Controls & Sound Presets */}
-        <MusicBoxControls
-          settings={settings}
-          onUpdateSettings={setSettings}
-          onPreviewTine={handlePreviewTine}
-          onRunAiOptimization={handleRunAiOptimization}
-          isAiOptimizing={isAiOptimizing}
-          notesCount={displayNotes.length}
-        />
-
         {/* ③ Export & Downloads */}
         <ExportPanel
           notes={displayNotes}
@@ -216,6 +230,12 @@ export default function App() {
           commentary={aiCommentary}
         />
       </main>
+
+      {/* Footer with Sound Test and Copyright Guidelines */}
+      <Footer
+        onOpenCopyrightModal={() => setIsCopyrightModalOpen(true)}
+        onTestSound={() => handlePreviewTine(72)}
+      />
 
       {/* Copyright Modal */}
       <CopyrightNoticeModal

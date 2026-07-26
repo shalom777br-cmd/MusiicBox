@@ -47,9 +47,27 @@ export default function MusicBoxPlayer({
     setTotalDurationSec(computedTotalSec);
   }, [notes, settings.tempoBpm, computedTotalSec]);
 
+  const handleTestSound = () => {
+    const testMidi = 72;
+    setActiveMidis((prev) => {
+      const next = new Set(prev);
+      next.add(testMidi);
+      return next;
+    });
+    onPreviewNote(testMidi);
+    setTimeout(() => {
+      setActiveMidis((prev) => {
+        const next = new Set(prev);
+        next.delete(testMidi);
+        return next;
+      });
+    }, 450);
+  };
+
   // Handle Play toggle
   const handleTogglePlay = async () => {
     if (!audioEngine) return;
+    audioEngine.unlockAudio();
 
     if (isPlaying) {
       audioEngine.pause();
@@ -314,17 +332,47 @@ export default function MusicBoxPlayer({
               </span>
             </div>
             <p className="text-xs text-[#e5d3b3]/60 mt-0.5">
-              {meta.composer} • {notes.length}音 • {settings.timbre.toUpperCase()} 音色
+              {meta.composer} • {notes.length}音 • {settings.timbre === 'wooden' ? '木製' : 'クラシック'}音色
             </p>
           </div>
         </div>
 
-        {/* Status Indicator */}
-        <div className="flex items-center space-x-2 text-xs font-mono bg-[#1c0f0a] px-3.5 py-1.5 rounded-full border border-[#3d251a] text-[#c19a6b]">
-          <Clock className="w-3.5 h-3.5 text-[#c19a6b]" />
-          <span>
-            {formatTime(currentTimeSec)} / {formatTime(totalDurationSec)}
-          </span>
+        {/* Status Indicators */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Visual Active Sound Signal Indicator */}
+          <div
+            className={`flex items-center space-x-2 text-xs font-mono px-3.5 py-1.5 rounded-full border transition-all duration-200 ${
+              isPlaying || activeMidis.size > 0
+                ? 'bg-[#4ade80]/15 border-[#4ade80]/60 text-[#4ade80] shadow-[0_0_12px_rgba(74,222,128,0.25)]'
+                : 'bg-[#1c0f0a] border-[#3d251a] text-[#e5d3b3]/40'
+            }`}
+            title="オーディオ発音トリガー状態"
+          >
+            <span className="relative flex h-2.5 w-2.5 items-center justify-center">
+              {(isPlaying || activeMidis.size > 0) && (
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4ade80] opacity-75" />
+              )}
+              <span
+                className={`relative inline-flex h-2 w-2 rounded-full transition-colors duration-200 ${
+                  isPlaying || activeMidis.size > 0 ? 'bg-[#4ade80]' : 'bg-[#3d251a]'
+                }`}
+              />
+            </span>
+            <span className="font-semibold tracking-wider">
+              {isPlaying || activeMidis.size > 0
+                ? activeMidis.size > 0
+                  ? `ACTIVE (${Array.from(activeMidis).map(midiToPitchName).join(', ')})`
+                  : 'ACTIVE (再生中)'
+                : 'STANDBY'}
+            </span>
+          </div>
+
+          <div className="flex items-center space-x-2 text-xs font-mono bg-[#1c0f0a] px-3.5 py-1.5 rounded-full border border-[#3d251a] text-[#c19a6b]">
+            <Clock className="w-3.5 h-3.5 text-[#c19a6b]" />
+            <span>
+              {formatTime(currentTimeSec)} / {formatTime(totalDurationSec)}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -336,6 +384,24 @@ export default function MusicBoxPlayer({
           height={220}
           className="w-full h-[200px] sm:h-[220px] object-cover block"
         />
+
+        {/* Active Audio Trigger Indicator Overlay */}
+        <div className="absolute top-3 left-3 flex items-center space-x-2">
+          <div
+            className={`px-3 py-1 rounded-full border text-[10px] font-mono tracking-wider transition-all duration-150 flex items-center space-x-1.5 backdrop-blur-md ${
+              isPlaying || activeMidis.size > 0
+                ? 'bg-[#4ade80]/20 border-[#4ade80] text-[#4ade80] shadow-[0_0_10px_rgba(74,222,128,0.3)]'
+                : 'bg-[#1c0f0a]/80 border-[#3d251a] text-[#e5d3b3]/40'
+            }`}
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                isPlaying || activeMidis.size > 0 ? 'bg-[#4ade80] animate-pulse' : 'bg-[#3d251a]'
+              }`}
+            />
+            <span>{isPlaying || activeMidis.size > 0 ? 'AUDIO SIGNAL: ON' : 'AUDIO SIGNAL: IDLE'}</span>
+          </div>
+        </div>
 
         {/* Visualizer Overlay Badge */}
         <div className="absolute top-3 right-3 text-[10px] bg-[#1c0f0a]/80 text-[#c19a6b] px-3 py-1 rounded-full border border-[#3d251a] backdrop-blur-xs flex items-center space-x-1.5 uppercase tracking-wider">
@@ -407,7 +473,7 @@ export default function MusicBoxPlayer({
 
           {/* Test Sound Button */}
           <button
-            onClick={() => onPreviewNote(72)}
+            onClick={handleTestSound}
             className="flex items-center space-x-1.5 px-4 py-2.5 rounded-full bg-[#1c0f0a] hover:bg-[#3d251a] border border-[#3d251a] text-[#c19a6b] text-xs font-medium transition-all cursor-pointer"
             title="試聴音鳴らし"
           >

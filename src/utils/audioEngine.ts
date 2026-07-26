@@ -32,8 +32,7 @@ export class MusicBoxAudioEngine {
   private startTimeReal = 0;
   private totalBeats = 16;
 
-  private scheduledOscillators: (OscillatorNode | AudioBufferSourceNode)[] = [];
-  private scheduledGains: GainNode[] = [];
+  private scheduledNodes: { osc: OscillatorNode | AudioBufferSourceNode; gain: GainNode; stopTime: number }[] = [];
 
   constructor(settings: MusicBoxSettings) {
     this.settings = settings;
@@ -47,84 +46,108 @@ export class MusicBoxAudioEngine {
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       this.ctx = new AudioCtx();
+
+      // Safari state listener: auto-resume if state changes away from running
+      this.ctx.addEventListener('statechange', () => {
+        if (this.ctx && (this.ctx.state as string) !== 'running' && this.isPlaying) {
+          this.ctx.resume().catch(() => {});
+        }
+      });
     }
 
     if (!this.masterGain) {
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.setValueAtTime(0.85, this.ctx.currentTime);
+      this.masterGain.gain.value = 0.85;
 
-      // Dynamics Compressor to prevent clipping when multiple tines ring simultaneously
-      const compressor = this.ctx.createDynamicsCompressor();
-      compressor.threshold.setValueAtTime(-14, this.ctx.currentTime);
-      compressor.knee.setValueAtTime(24, this.ctx.currentTime);
-      compressor.ratio.setValueAtTime(6, this.ctx.currentTime);
-      compressor.attack.setValueAtTime(0.002, this.ctx.currentTime);
-      compressor.release.setValueAtTime(0.2, this.ctx.currentTime);
-
-      // Highpass filter to eliminate sub-bass hum
-      const highpass = this.ctx.createBiquadFilter();
-      highpass.type = 'highpass';
-      highpass.frequency.setValueAtTime(120, this.ctx.currentTime);
-
-      // Dry path (Direct to Master)
       this.dryGain = this.ctx.createGain();
-      this.dryGain.gain.setValueAtTime(1.0, this.ctx.currentTime);
-      this.dryGain.connect(highpass);
+      this.dryGain.gain.value = 1.0;
 
-      // Reverb path (Warm Wooden Cabinet Room)
+      // Reverb path
       this.reverbGain = this.ctx.createGain();
-      this.reverbGain.gain.setValueAtTime((this.settings?.reverbLevel ?? 0.3) * 0.35, this.ctx.currentTime);
+      const revVol = Math.max(0.0, Math.min(0.8, (this.settings?.reverbLevel ?? 0.3) * 0.4));
+      this.reverbGain.gain.value = revVol;
 
       try {
-        // Stereo delay diffusion for wooden box resonance
         const delayL = this.ctx.createDelay();
-        delayL.delayTime.value = 0.052;
+        delayL.delayTime.value = 0.045;
         const delayR = this.ctx.createDelay();
-        delayR.delayTime.value = 0.073;
-
-        const feedbackL = this.ctx.createGain();
-        feedbackL.gain.value = 0.22;
-        const feedbackR = this.ctx.createGain();
-        feedbackR.gain.value = 0.22;
-
-        const revFilter = this.ctx.createBiquadFilter();
-        revFilter.type = 'lowpass';
-        revFilter.frequency.value = 3800; // Warm wooden dampening
+        delayR.delayTime.value = 0.068;
 
         this.dryGain.connect(delayL);
         this.dryGain.connect(delayR);
 
-        delayL.connect(feedbackL);
-        feedbackL.connect(delayR);
+        delayL.connect(this.reverbGain);
+        delayR.connect(this.reverbGain);
 
-        delayR.connect(feedbackR);
-        feedbackR.connect(delayL);
-
-        delayL.connect(revFilter);
-        delayR.connect(revFilter);
-
-        revFilter.connect(this.reverbGain);
-        this.reverbGain.connect(highpass);
+        this.reverbGain.connect(this.masterGain);
       } catch (e) {
-        console.warn('Reverb node creation skipped:', e);
+        // Fallback simple reverb connection
+        this.dryGain.connect(this.reverbGain);
+        this.reverbGain.connect(this.masterGain);
       }
 
-      highpass.connect(this.masterGain);
-      this.masterGain.connect(compressor);
-      compressor.connect(this.ctx.destination);
+      this.dryGain.connect(this.masterGain);
+      this.masterGain.connect(this.ctx.destination);
     } else if (this.reverbGain) {
-      this.reverbGain.gain.setValueAtTime((this.settings?.reverbLevel ?? 0.3) * 0.35, this.ctx.currentTime);
+      const revVol = Math.max(0.0, Math.min(0.8, (this.settings?.reverbLevel ?? 0.3) * 0.4));
+      this.reverbGain.gain.value = revVol;
     }
 
     return this.ctx;
   }
 
+  // Synchronously unlock and resume AudioContext during user gesture (Critical for iOS Safari)
+  public unlockAudio(): AudioContext {
+    const ctx = this.initAudioContext();
+    if (ctx) {
+      if ((ctx.state as string) !== 'running') {
+        ctx.resume().catch((e) => console.warn('Unlock resume catch:', e));
+      }
+
+      // iOS Safari Web Audio unlock: play a silent 1-sample buffer synchronously
+      try {
+        const buffer = ctx.createBuffer(1, 1, 22050);
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.start(0);
+      } catch (e) {
+        // ignore
+      }
+
+      // Wake up physical audio hardware with a 2ms soft sine chime
+      try {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        g.gain.setValueAtTime(0.001, ctx.currentTime);
+        g.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 0.005);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.006);
+      } catch (e) {
+        // ignore
+      }
+    }
+    return ctx;
+  }
+
+  // Check if AudioContext is currently active
+  public isAudioRunning(): boolean {
+    return this.ctx !== null && this.ctx.state === 'running';
+  }
+
+  public getAudioState(): string {
+    return this.ctx ? this.ctx.state : 'uninitialized';
+  }
+
   // Ensure AudioContext is instantiated and running
   public async ensureAudioRunning(): Promise<AudioContext | null> {
-    const ctx = this.initAudioContext();
+    const ctx = this.unlockAudio();
     if (!ctx) return null;
 
-    if (ctx.state === 'suspended') {
+    if ((ctx.state as string) !== 'running') {
       try {
         await ctx.resume();
       } catch (e) {
@@ -132,35 +155,29 @@ export class MusicBoxAudioEngine {
       }
     }
 
-    try {
-      // Play a tiny 1-sample silent buffer to unlock Safari/Chrome autoplay restrictions
-      const buffer = ctx.createBuffer(1, 1, 22050);
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-      source.start(0);
-    } catch (e) {
-      // Ignore
+    // Ensure master and dry gains are fully open
+    if (this.dryGain) {
+      this.dryGain.gain.value = 1.0;
+    }
+    if (this.masterGain) {
+      this.masterGain.gain.value = 0.9;
     }
 
     return ctx;
   }
 
-  // Legacy alias for compatibility
-  public unlockAudio() {
-    this.ensureAudioRunning();
-  }
-
   // Play a single note immediately (for live preview when clicking controls / keys)
   public async playSingleNote(midiNumber: number, duration: number = 1.0) {
-    const ctx = await this.ensureAudioRunning();
-    if (!ctx) return;
-
-    if (ctx.state === 'suspended') {
-      await ctx.resume().catch(() => {});
+    const ctx = this.unlockAudio();
+    if ((ctx.state as string) !== 'running') {
+      try {
+        await ctx.resume();
+      } catch (e) {
+        // ignore
+      }
     }
 
-    const now = ctx.currentTime + 0.005;
+    const now = ctx.currentTime + 0.02;
     const shiftedMidi = midiNumber + (this.settings?.keyShift || 0);
     this.synthesizeTine(shiftedMidi, now, duration, 100, this.settings?.timbre || 'classic');
     if (this.settings?.mechanicalNoise) {
@@ -180,56 +197,41 @@ export class MusicBoxAudioEngine {
     if (!ctx || !this.dryGain) return;
 
     // Safeguard startTime against times strictly in the past
-    const safeStartTime = Math.max(startTime, ctx.currentTime + 0.003);
+    const safeStartTime = Math.max(startTime, ctx.currentTime + 0.02);
     const freq = midiToFreq(midi);
-    const velRatio = Math.max(0.1, velocity / 127);
+    const velRatio = Math.max(0.2, velocity / 127);
 
     // Fundamental decay time according to pitch (higher notes decay faster)
-    let decaySec = Math.max(0.9, 3.2 - (midi - 55) * 0.04);
+    let decaySec = Math.max(1.2, 3.8 - (midi - 55) * 0.04);
     if (this.settings?.relaxationMode) {
-      decaySec *= 1.4;
+      decaySec *= 1.5;
     }
 
-    // Stereo panning based on pitch (low notes left, high notes right)
-    let panNode: StereoPannerNode | null = null;
-    if (typeof ctx.createStereoPanner === 'function') {
-      try {
-        panNode = ctx.createStereoPanner();
-        // Map MIDI 55..90 to -0.4 .. +0.4
-        const panValue = Math.max(-0.55, Math.min(0.55, (midi - 72) * 0.03));
-        panNode.pan.setValueAtTime(panValue, safeStartTime);
-        panNode.connect(this.dryGain);
-      } catch (e) {
-        panNode = null;
-      }
-    }
-    const outputTarget = panNode || this.dryGain;
+    const outputTarget = this.dryGain;
 
     // 1. Physical Pin Pluck Transient (Tiny high-frequency metallic "ting")
     try {
       const clickOsc = ctx.createOscillator();
       const clickGain = ctx.createGain();
       clickOsc.type = 'sine';
-      // High-pitched tap (around 4.2 kHz)
-      clickOsc.frequency.setValueAtTime(Math.min(12000, Math.max(3000, freq * 3.8)), safeStartTime);
+      clickOsc.frequency.setValueAtTime(Math.min(11000, Math.max(2800, freq * 3.5)), safeStartTime);
 
-      clickGain.gain.setValueAtTime(0.12 * velRatio, safeStartTime);
-      clickGain.gain.exponentialRampToValueAtTime(0.0001, safeStartTime + 0.008); // 8ms pin tap
+      clickGain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      clickGain.gain.setValueAtTime(0.25 * velRatio, safeStartTime);
+      clickGain.gain.linearRampToValueAtTime(0.0001, safeStartTime + 0.012);
 
       clickOsc.connect(clickGain);
       clickGain.connect(outputTarget);
 
       clickOsc.start(safeStartTime);
-      clickOsc.stop(safeStartTime + 0.012);
+      clickOsc.stop(safeStartTime + 0.015);
 
-      this.scheduledOscillators.push(clickOsc);
-      this.scheduledGains.push(clickGain);
+      this.scheduledNodes.push({ osc: clickOsc, gain: clickGain, stopTime: safeStartTime + 0.015 });
     } catch (e) {
       // Ignore transient errors
     }
 
     // 2. Timbre Harmonics & Decay Setup
-    // Physical comb tines have a pure sine fundamental and very short high overtones that damp in < 0.1s
     let harmonicFactors = [1.0, 2.756, 5.404];
     let harmonicGains = [1.0, 0.25, 0.08];
     let filterCutoff = 10000;
@@ -240,22 +242,12 @@ export class MusicBoxAudioEngine {
         harmonicGains = [1.0, 0.22, 0.06];
         filterCutoff = 10000;
         break;
-      case 'antique': // Warm Cylinder Box
-        harmonicFactors = [1.0, 2.0, 3.75];
-        harmonicGains = [1.0, 0.32, 0.1];
-        filterCutoff = 7000;
-        break;
-      case 'glass': // Glass Chime Music Box
-        harmonicFactors = [1.0, 3.0, 6.0];
-        harmonicGains = [1.0, 0.35, 0.15];
-        filterCutoff = 14000;
-        break;
-      case 'crystal': // Crystal Shimmer
-        harmonicFactors = [1.0, 2.0, 4.0, 8.0];
-        harmonicGains = [1.0, 0.28, 0.12, 0.04];
-        filterCutoff = 13000;
-        break;
       case 'wooden': // Wooden Kalimba / Marimba Box
+        harmonicFactors = [1.0, 1.5, 2.5];
+        harmonicGains = [1.0, 0.18, 0.03];
+        filterCutoff = 5000;
+        break;
+      default:
         harmonicFactors = [1.0, 1.5, 2.5];
         harmonicGains = [1.0, 0.18, 0.03];
         filterCutoff = 5000;
@@ -270,32 +262,39 @@ export class MusicBoxAudioEngine {
     // Synthesize partials
     harmonicFactors.forEach((factor, idx) => {
       const partialFreq = freq * factor;
-      if (partialFreq > 17000) return; // avoid aliasing
+      if (partialFreq > 16000) return; // avoid aliasing
 
       try {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
 
-        osc.type = timbre === 'antique' && idx === 0 ? 'triangle' : 'sine';
+        osc.type = 'sine';
         osc.frequency.setValueAtTime(partialFreq, safeStartTime);
 
-        const partialVol = harmonicGains[idx] * velRatio * 0.38;
+        const partialVol = harmonicGains[idx] * velRatio * 0.65;
+        const partialDecay = idx === 0 ? decaySec : Math.min(0.25, decaySec * 0.08);
 
-        // CRITICAL: Fundamental rings for decaySec (1-3s), but high overtones damp almost immediately (0.05 - 0.15s)
-        const partialDecay = idx === 0 ? decaySec : Math.min(0.18, decaySec * 0.05);
-
+        // Immediate pluck amplitude with smooth 3-stage envelope
+        gain.gain.setValueAtTime(0.0001, ctx.currentTime);
         gain.gain.setValueAtTime(0.0001, safeStartTime);
-        gain.gain.linearRampToValueAtTime(partialVol, safeStartTime + 0.002);
-        gain.gain.exponentialRampToValueAtTime(0.0001, safeStartTime + partialDecay);
+        gain.gain.linearRampToValueAtTime(partialVol, safeStartTime + 0.003);
+        try {
+          gain.gain.exponentialRampToValueAtTime(0.0001, safeStartTime + partialDecay);
+        } catch (e) {
+          gain.gain.linearRampToValueAtTime(0.0001, safeStartTime + partialDecay);
+        }
 
         osc.connect(gain);
         gain.connect(bodyFilter);
+        if (idx === 0) {
+          // Direct fail-safe connection for fundamental note
+          gain.connect(outputTarget);
+        }
 
         osc.start(safeStartTime);
         osc.stop(safeStartTime + partialDecay + 0.05);
 
-        this.scheduledOscillators.push(osc);
-        this.scheduledGains.push(gain);
+        this.scheduledNodes.push({ osc, gain, stopTime: safeStartTime + partialDecay + 0.05 });
       } catch (e) {
         console.warn('Partial synthesis error:', e);
       }
@@ -332,8 +331,7 @@ export class MusicBoxAudioEngine {
 
       noise.start(safeStartTime);
 
-      this.scheduledOscillators.push(noise);
-      this.scheduledGains.push(gain);
+      this.scheduledNodes.push({ osc: noise, gain, stopTime: safeStartTime + 0.05 });
     } catch (e) {
       // Ignore
     }
@@ -349,10 +347,9 @@ export class MusicBoxAudioEngine {
     },
     startFromBeat = 0
   ) {
-    const ctx = await this.ensureAudioRunning();
-    if (!ctx) return;
-
-    if (ctx.state === 'suspended') {
+    // 1. Synchronously unlock context inside user gesture stack (CRITICAL for Safari)
+    const ctx = this.unlockAudio();
+    if ((ctx.state as string) !== 'running') {
       try {
         await ctx.resume();
       } catch (e) {
@@ -363,7 +360,6 @@ export class MusicBoxAudioEngine {
     this.stop();
     this.isPlaying = true;
     this.activeNotes = notes;
-    this.currentBeat = startFromBeat;
 
     this.onProgressCallback = callbacks.onProgress;
     this.onNoteTriggerCallback = callbacks.onNoteTrigger;
@@ -383,11 +379,12 @@ export class MusicBoxAudioEngine {
     const secPerBeat = 60 / bpm;
     const totalDurationSec = this.totalBeats * secPerBeat;
 
-    const scheduleOffsetSec = 0.1; // 100ms buffer to guarantee all nodes start in the future
+    const scheduleOffsetSec = 0.08; // 80ms buffer to ensure nodes start in the future
     this.startTimeReal = ctx.currentTime + scheduleOffsetSec - startBeat * secPerBeat;
 
+    // Schedule all notes from startBeat onwards
     notes.forEach((note) => {
-      if (note.startTime >= startBeat) {
+      if (note.startTime >= startBeat - 0.01) {
         const noteTimeReal = this.startTimeReal + note.startTime * secPerBeat;
         const shiftedMidi = note.midiNumber + this.settings.keyShift;
 
@@ -405,11 +402,11 @@ export class MusicBoxAudioEngine {
       }
     });
 
-    // Start UI animation ticker loop
     const updateLoop = () => {
       if (!this.isPlaying || !this.ctx) return;
 
-      const elapsedSec = this.ctx.currentTime - this.startTimeReal;
+      const now = this.ctx.currentTime;
+      const elapsedSec = now - this.startTimeReal;
       const currentBeat = elapsedSec / secPerBeat;
 
       if (currentBeat >= this.totalBeats) {
@@ -423,11 +420,11 @@ export class MusicBoxAudioEngine {
         return;
       }
 
-      this.currentBeat = currentBeat;
+      this.currentBeat = Math.max(0, currentBeat);
 
-      // Trigger note hit events for visualizer
+      // Trigger visualizer events
       if (this.onNoteTriggerCallback) {
-        const windowBeat = 0.15;
+        const windowBeat = 0.12;
         notes.forEach((n) => {
           if (Math.abs(n.startTime - currentBeat) < windowBeat) {
             this.onNoteTriggerCallback!(n);
@@ -436,7 +433,7 @@ export class MusicBoxAudioEngine {
       }
 
       if (this.onProgressCallback) {
-        this.onProgressCallback(currentBeat, elapsedSec, totalDurationSec);
+        this.onProgressCallback(this.currentBeat, Math.max(0, elapsedSec), totalDurationSec);
       }
 
       this.timerId = requestAnimationFrame(updateLoop);
@@ -455,40 +452,21 @@ export class MusicBoxAudioEngine {
     if (this.ctx) {
       const now = this.ctx.currentTime;
 
-      // Instantly mute all individual note gain nodes
-      for (const g of this.scheduledGains) {
+      // Cleanly stop and disconnect all scheduled audio nodes
+      for (const item of this.scheduledNodes) {
         try {
-          g.gain.cancelScheduledValues(now);
-          g.gain.setValueAtTime(0, now);
-        } catch (e) {
-          // ignore
-        }
-      }
-
-      // Stop & disconnect all scheduled oscillators and noise sources
-      for (const osc of this.scheduledOscillators) {
-        try {
-          osc.stop(now);
-          osc.disconnect();
-        } catch (e) {
-          // ignore
-        }
-      }
-
-      // Duck dry gain momentarily to eliminate any ringing reverb/decay tails, then restore
-      if (this.dryGain) {
-        try {
-          this.dryGain.gain.cancelScheduledValues(now);
-          this.dryGain.gain.setValueAtTime(0, now);
-          this.dryGain.gain.setValueAtTime(1.0, now + 0.04);
+          item.gain.gain.cancelScheduledValues(now);
+          item.gain.gain.setValueAtTime(0, now);
+          item.gain.disconnect();
+          item.osc.stop(now);
+          item.osc.disconnect();
         } catch (e) {
           // ignore
         }
       }
     }
 
-    this.scheduledOscillators = [];
-    this.scheduledGains = [];
+    this.scheduledNodes = [];
   }
 
   public stop() {
@@ -561,7 +539,7 @@ export class MusicBoxAudioEngine {
         const osc = offlineCtx.createOscillator();
         const gain = offlineCtx.createGain();
 
-        osc.type = settings.timbre === 'antique' && idx === 0 ? 'triangle' : 'sine';
+        osc.type = 'sine';
         osc.frequency.setValueAtTime(pFreq, startTime);
 
         const pVol = gains[idx] * velRatio * 0.38;

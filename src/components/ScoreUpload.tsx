@@ -135,10 +135,20 @@ export default function ScoreUpload({
               }),
             });
 
-            const resData = await response.json();
+            const resText = await response.text();
+            let resData: any = null;
+            try {
+              resData = JSON.parse(resText);
+            } catch (jsonErr) {
+              throw new Error(
+                response.ok
+                  ? 'サーバーレスポンスの形式が不正です。'
+                  : `サーバーエラー (${response.status}) が発生しました。時間をおいて再度お試しください。`
+              );
+            }
 
-            if (!resData.success || !resData.data?.notes?.length) {
-              throw new Error(resData.error || 'Gemini AIによる楽譜認識に失敗しました。');
+            if (!response.ok || !resData?.success || !resData?.data?.notes?.length) {
+              throw new Error(resData?.error || 'Gemini AIによる楽譜認識に失敗しました。');
             }
 
             const parsed = resData.data;
@@ -195,23 +205,8 @@ export default function ScoreUpload({
   };
 
   return (
-    <div className="bg-[#2d1b14] border border-[#3d251a] rounded-[32px] p-6 sm:p-8 shadow-xl backdrop-blur-md">
-      {/* Title */}
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-full bg-[#1c0f0a] border border-[#3d251a] flex items-center justify-center text-[#c19a6b]">
-            <Upload className="w-5 h-5" />
-          </div>
-          <div>
-            <h2 className="text-lg font-serif italic text-[#c19a6b]">① 楽譜の読み込み</h2>
-            <p className="text-xs text-[#e5d3b3]/60">
-              ファイル（PDF・画像・MusicXML・MIDI）のアップロード、またはサンプル名曲を選択
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Upload Drag & Drop Area */}
+    <div className="bg-[#2d1b14] border border-[#3d251a] rounded-2xl p-3.5 sm:p-4 shadow-lg backdrop-blur-md space-y-3">
+      {/* Upload Drag & Drop Area (Compact horizontal layout) */}
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -220,9 +215,9 @@ export default function ScoreUpload({
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
-        className={`relative border-2 border-dashed rounded-[24px] p-6 sm:p-8 text-center cursor-pointer transition-all ${
+        className={`relative border border-dashed rounded-xl px-3 py-2.5 sm:px-4 sm:py-3 transition-all cursor-pointer ${
           isDragging
-            ? 'border-[#c19a6b] bg-[#1c0f0a]/80 shadow-lg scale-[1.01]'
+            ? 'border-[#c19a6b] bg-[#1c0f0a]/90 shadow-md'
             : 'border-[#3d251a] hover:border-[#c19a6b]/50 bg-[#1c0f0a] hover:bg-[#1c0f0a]/90'
         }`}
       >
@@ -235,38 +230,41 @@ export default function ScoreUpload({
         />
 
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-4 space-y-3">
-            <Loader2 className="w-8 h-8 text-[#c19a6b] animate-spin" />
-            <p className="text-sm font-medium text-[#e5d3b3]">{uploadStatus}</p>
-            <p className="text-xs text-[#e5d3b3]/50">AIが音符・主旋律を抽出しています...</p>
+          <div className="flex items-center justify-center space-x-3 py-1.5">
+            <Loader2 className="w-5 h-5 text-[#c19a6b] animate-spin" />
+            <div className="text-left">
+              <p className="text-xs font-semibold text-[#e5d3b3]">{uploadStatus}</p>
+              <p className="text-[10px] text-[#c19a6b]">AIが全音符・全小節を抽出中...</p>
+            </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center space-y-3">
-            <div className="w-14 h-14 rounded-full bg-[#2d1b14] flex items-center justify-center border border-[#c19a6b]/30 text-[#c19a6b]">
-              <FileMusic className="w-7 h-7" />
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
+            <div className="flex items-center space-x-2.5 text-left">
+              <div className="w-8 h-8 rounded-full bg-[#2d1b14] flex items-center justify-center border border-[#c19a6b]/40 text-[#c19a6b] shrink-0">
+                <Upload className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h2 className="text-xs font-bold text-[#c19a6b] tracking-wide">① 楽譜読み込み</h2>
+                  <span className="text-[10px] text-[#e5d3b3]/50">PDF・画像・MusicXML・MIDI</span>
+                </div>
+                <p className="text-[11px] text-[#e5d3b3]/80">
+                  楽譜ファイルをドラッグ＆ドロップ、またはファイルを選択
+                </p>
+              </div>
             </div>
-            <p className="font-serif text-base italic text-[#e5d3b3]">
-              楽譜ファイル（PDF, JPG, PNG, MusicXML, MIDI）をドラッグ＆ドロップ
-            </p>
-            <p className="text-xs text-[#e5d3b3]/50">
-              または <span className="text-[#c19a6b] underline font-semibold">ファイルを選択</span>
-            </p>
 
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                fileInputRef.current?.click();
-              }}
-              className="mt-1 px-6 py-2 bg-[#c19a6b] text-[#1c0f0a] rounded-full font-bold text-xs uppercase tracking-wider hover:opacity-90 transition-opacity"
-            >
-              Browse Files
-            </button>
-
-            <div className="flex flex-wrap items-center justify-center gap-2 pt-2 text-[10px] text-[#e5d3b3]/40">
-              <span className="px-2.5 py-0.5 bg-[#1c0f0a] rounded-full border border-[#3d251a]">PDF / 画像 (AI OCR)</span>
-              <span className="px-2.5 py-0.5 bg-[#1c0f0a] rounded-full border border-[#3d251a]">MusicXML</span>
-              <span className="px-2.5 py-0.5 bg-[#1c0f0a] rounded-full border border-[#3d251a]">MIDI (.mid)</span>
+            <div className="flex items-center space-x-2 shrink-0">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
+                className="px-3.5 py-1.5 bg-[#c19a6b] hover:bg-[#d4ac7d] text-[#1c0f0a] rounded-full font-bold text-[11px] uppercase tracking-wider transition-opacity cursor-pointer shadow-sm"
+              >
+                ファイルを選択
+              </button>
             </div>
           </div>
         )}
@@ -274,43 +272,37 @@ export default function ScoreUpload({
 
       {/* Error Message */}
       {errorMsg && (
-        <div className="mt-3 p-3 bg-rose-950/80 border border-rose-800 rounded-2xl text-rose-200 text-xs flex items-center space-x-2">
+        <div className="p-2.5 bg-rose-950/80 border border-rose-800 rounded-xl text-rose-200 text-xs flex items-center space-x-2">
           <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
           <span>{errorMsg}</span>
         </div>
       )}
 
-      {/* Preset Sample Songs Selection */}
-      <div className="mt-6 border-t border-[#3d251a] pt-4">
-        <p className="text-xs font-serif italic text-[#c19a6b] mb-3 flex items-center space-x-1.5">
-          <Sparkles className="w-3.5 h-3.5 text-[#c19a6b]" />
-          <span>サンプル名曲で今すぐ試聴（ワンクリック）:</span>
-        </p>
+      {/* Preset Sample Songs Compact Selector */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-1 border-t border-[#3d251a]/60">
+        <span className="text-[11px] font-serif italic text-[#c19a6b] flex items-center space-x-1 shrink-0">
+          <Sparkles className="w-3 h-3 text-[#c19a6b]" />
+          <span>サンプル名曲（ワンクリックロード）:</span>
+        </span>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 w-full sm:w-auto">
           {SAMPLE_SONGS.map((song) => {
             const isActive = activeSongId === song.id;
             return (
               <button
                 key={song.id}
                 onClick={() => handleSelectSample(song)}
-                className={`p-3 rounded-2xl border text-left transition-all flex flex-col justify-between cursor-pointer ${
+                className={`px-2 py-1 rounded-lg border text-left transition-all cursor-pointer ${
                   isActive
-                    ? 'bg-[#c19a6b]/20 border-[#c19a6b] text-[#e5d3b3] shadow-md'
-                    : 'bg-[#1c0f0a] hover:bg-[#3d251a]/40 border-[#3d251a] text-[#e5d3b3]/80 hover:border-[#c19a6b]/40'
+                    ? 'bg-[#c19a6b]/20 border-[#c19a6b] text-[#e5d3b3] font-bold shadow-xs'
+                    : 'bg-[#1c0f0a] hover:bg-[#3d251a]/50 border-[#3d251a] text-[#e5d3b3]/75 hover:border-[#c19a6b]/40'
                 }`}
               >
-                <div>
-                  <span className="text-[10px] text-[#c19a6b] font-serif block truncate">
-                    {song.composer}
-                  </span>
-                  <span className="text-xs font-medium block truncate mt-0.5">
-                    {song.titleJa}
-                  </span>
+                <div className="truncate text-[10px] text-[#c19a6b] leading-tight">
+                  {song.composer}
                 </div>
-                <div className="mt-2 flex items-center justify-between text-[10px] text-[#e5d3b3]/50">
-                  <span>{song.timeSignature}</span>
-                  {isActive && <Check className="w-3 h-3 text-[#c19a6b]" />}
+                <div className="truncate text-[11px] font-medium leading-tight">
+                  {song.titleJa}
                 </div>
               </button>
             );
