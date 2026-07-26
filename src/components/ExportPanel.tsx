@@ -168,59 +168,9 @@ export default function ExportPanel({ notes, settings, meta }: ExportPanelProps)
           <p className="font-semibold text-[#c19a6b]">Safari / iOS で音が出ない場合のチェック:</p>
           <ul className="list-disc list-inside space-y-0.5 text-[11px] text-[#e5d3b3]/70">
             <li>iPhone / iPad の「マナーモード（サイレントスイッチ）」がONの場合、Safariは消音になります。サイドスイッチを解除して音量を上げてください。</li>
-            <li>下の「WAV試聴再生」または「再生」ボタンを押すとWeb Audioエンジンが自動解凍されます。</li>
+            <li>「再生」または上部の試聴ボタンを押すとWeb Audioエンジンが自動起動します。</li>
           </ul>
         </div>
-      </div>
-
-      {/* Embedded WAV Audio Player / Preview Section (Placed at TOP) */}
-      <div className="p-4 rounded-2xl bg-[#1c0f0a] border border-[#3d251a] flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center space-x-3 w-full sm:w-auto">
-          <button
-            onClick={handleToggleWavPreview}
-            disabled={isExportingWav || notes.length === 0}
-            className="w-12 h-12 rounded-full bg-[#c19a6b] hover:bg-[#d4ac7d] text-[#1c0f0a] flex items-center justify-center shrink-0 transition-transform active:scale-95 shadow-md disabled:opacity-50 cursor-pointer"
-            title="WAV音源をブラウザで試聴再生"
-          >
-            {isExportingWav ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : isPlayingWav ? (
-              <Pause className="w-5 h-5 fill-current" />
-            ) : (
-              <Play className="w-5 h-5 fill-current ml-0.5" />
-            )}
-          </button>
-          <div>
-            <div className="text-sm font-bold text-[#e5d3b3] flex items-center space-x-2">
-              <span>生成されたWAV音源の試聴再生</span>
-              <span className="text-[10px] px-2 py-0.5 bg-[#2d1b14] border border-[#3d251a] text-[#c19a6b] rounded-full">
-                Safari 互換
-              </span>
-            </div>
-            <p className="text-xs text-[#e5d3b3]/60">
-              {wavAudioUrl
-                ? isPlayingWav
-                  ? '再生中...'
-                  : 'ボタンを押して作成したWAV音源を再生'
-                : 'ボタンを押すとWAV音源を生成してブラウザ内で直接試聴できます'}
-            </p>
-          </div>
-        </div>
-
-        {/* Hidden / Visible HTML5 Audio Element for Safari Native Streaming */}
-        {wavAudioUrl && (
-          <div className="w-full sm:w-auto flex items-center space-x-2">
-            <audio
-              ref={audioRef}
-              src={wavAudioUrl}
-              onEnded={() => setIsPlayingWav(false)}
-              onPause={() => setIsPlayingWav(false)}
-              onPlay={() => setIsPlayingWav(true)}
-              className="h-8 max-w-[240px] rounded-lg accent-[#c19a6b]"
-              controls
-            />
-          </div>
-        )}
       </div>
 
       {/* Download Action Buttons Grid */}
