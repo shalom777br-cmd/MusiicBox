@@ -1,23 +1,7 @@
 import React from 'react';
-import { Play, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 
-interface HeaderProps {
-  onTestSound?: () => void;
-}
-
-export default function Header({ onTestSound }: HeaderProps) {
-  const [isPlayingTest, setIsPlayingTest] = React.useState(false);
-
-  const handleClickTest = () => {
-    if (onTestSound) {
-      setIsPlayingTest(true);
-      onTestSound();
-      setTimeout(() => {
-        setIsPlayingTest(false);
-      }, 1000);
-    }
-  };
-
+export default function Header() {
   return (
     <header className="relative bg-[#1c0f0a] border-b border-[#3d251a] py-5 px-6 sm:px-10 text-[#e5d3b3]">
       {/* Decorative Top Gold Trim */}
@@ -45,22 +29,6 @@ export default function Header({ onTestSound }: HeaderProps) {
             </p>
           </div>
         </div>
-
-        {/* Top Header Action: Safari 互換 試聴再生ボタン */}
-        {onTestSound && (
-          <button
-            onClick={handleClickTest}
-            className={`flex items-center space-x-2 text-xs px-4 py-2 rounded-full font-bold transition-all shadow-md cursor-pointer active:scale-95 ${
-              isPlayingTest
-                ? 'bg-[#e5d3b3] text-[#1c0f0a] scale-105'
-                : 'bg-[#c19a6b] hover:bg-[#d4ad7d] text-[#1c0f0a]'
-            }`}
-            title="Safari / iOS対応の試聴再生・音声を有効化"
-          >
-            <Play className="w-3.5 h-3.5 fill-current" />
-            <span>{isPlayingTest ? '♪ 試聴テスト再生中...' : '▶ Safari 試聴再生・音声有効化'}</span>
-          </button>
-        )}
       </div>
     </header>
   );

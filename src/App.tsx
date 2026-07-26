@@ -8,6 +8,7 @@ import PunchCardEditor from './components/PunchCardEditor';
 import ExportPanel from './components/ExportPanel';
 import AiAnalysisCard from './components/AiAnalysisCard';
 import CopyrightNoticeModal from './components/CopyrightNoticeModal';
+import TopWavPlayer from './components/TopWavPlayer';
 
 import { MusicNote, MusicBoxSettings, ScoreMeta } from './types';
 import { SAMPLE_SONGS } from './data/sampleSongs';
@@ -176,12 +177,17 @@ export default function App() {
       <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#2d1b14] via-[#1c0f0a] to-[#120805] pointer-events-none -z-10" />
 
       {/* Application Header */}
-      <Header
-        onTestSound={() => handlePreviewTine(72)}
-      />
+      <Header />
 
       {/* Main Content Layout - Tablet & Desktop 2-Column Pillar Grid */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 space-y-6">
+        {/* Top Priority WAV Audio Preview Player */}
+        <TopWavPlayer
+          notes={displayNotes}
+          settings={settings}
+          meta={meta}
+        />
+
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
           {/* Left Pillar: Input, Controls, Export, & AI Commentary */}
           <div className="md:col-span-5 space-y-6">
