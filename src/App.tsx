@@ -9,6 +9,7 @@ import ExportPanel from './components/ExportPanel';
 import AiAnalysisCard from './components/AiAnalysisCard';
 import CopyrightNoticeModal from './components/CopyrightNoticeModal';
 import TopWavPlayer from './components/TopWavPlayer';
+import StaffNotationEditor from './components/StaffNotationEditor';
 
 import { MusicNote, MusicBoxSettings, ScoreMeta } from './types';
 import { SAMPLE_SONGS } from './data/sampleSongs';
@@ -181,6 +182,15 @@ export default function App() {
 
       {/* Main Content Layout - Tablet & Desktop 2-Column Pillar Grid */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 space-y-6">
+        {/* Top Interactive Staff Score Notation Editor (五線譜🎼入力エディタ) */}
+        <StaffNotationEditor
+          notes={displayNotes}
+          onChangeNotes={handleUpdateNotes}
+          audioEngine={audioEngine}
+          settings={settings}
+          meta={meta}
+        />
+
         {/* Top Priority WAV Audio Preview Player */}
         <TopWavPlayer
           notes={displayNotes}

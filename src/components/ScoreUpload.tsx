@@ -142,8 +142,12 @@ export default function ScoreUpload({
             } catch (jsonErr) {
               if (response.status === 413) {
                 throw new Error('ファイルサイズが大きすぎます。容量の小さい画像またはPDFをお試しください。');
+              } else if (response.status === 404) {
+                throw new Error('AI解析サーバーへの接続に失敗しました（404）。サーバー再起動中などの可能性があります。数秒後に再度お試しください。');
+              } else if (response.status >= 500) {
+                throw new Error(`AI解析サーバーエラー (${response.status})が発生しました。しばらく時間をおいて再度お試しください。`);
               }
-              throw new Error(`AI解析サーバーの応答読み込みエラー (${response.status})。しばらく時間をおいて再度お試しください。`);
+              throw new Error(`サーバーからの応答を読み込めませんでした (${response.status})。時間をおいて再度お試しください。`);
             }
 
             if (!response.ok || !resData?.success || !resData?.data?.notes?.length) {
