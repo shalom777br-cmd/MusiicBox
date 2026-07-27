@@ -140,15 +140,14 @@ export default function ScoreUpload({
             try {
               resData = JSON.parse(resText);
             } catch (jsonErr) {
-              throw new Error(
-                response.ok
-                  ? 'サーバーレスポンスの形式が不正です。'
-                  : `サーバーエラー (${response.status}) が発生しました。時間をおいて再度お試しください。`
-              );
+              if (response.status === 413) {
+                throw new Error('ファイルサイズが大きすぎます。容量の小さい画像またはPDFをお試しください。');
+              }
+              throw new Error(`AI解析サーバーの応答読み込みエラー (${response.status})。しばらく時間をおいて再度お試しください。`);
             }
 
             if (!response.ok || !resData?.success || !resData?.data?.notes?.length) {
-              throw new Error(resData?.error || 'Gemini AIによる楽譜認識に失敗しました。');
+              throw new Error(resData?.error || 'Gemini AIによる楽譜認識に失敗しました。別の画像ファイルをお試しください。');
             }
 
             const parsed = resData.data;

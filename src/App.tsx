@@ -40,7 +40,7 @@ export default function App() {
     timbre: 'wooden',
     tempoBpm: defaultSample.bpm,
     keyShift: 0,
-    combCount: 18,
+    combCount: 50,
     removeChords: false,
     removeBass: false,
     simplifyTrills: false,

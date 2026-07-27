@@ -4,7 +4,7 @@
 
 export type TimbreType = 'wooden' | 'classic';
 
-export type CombType = 18 | 30 | 50;
+export type CombType = 18 | 30 | 50 | 72 | 100;
 
 export interface MusicNote {
   id: string;

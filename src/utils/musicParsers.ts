@@ -356,7 +356,7 @@ export function transformNotesForMusicBox(
     removeChords: boolean;
     removeBass: boolean;
     simplifyTrills: boolean;
-    combCount: 18 | 30 | 50;
+    combCount: 18 | 30 | 50 | 72 | 100;
     keyShift: number;
   }
 ): MusicNote[] {
@@ -403,21 +403,25 @@ export function transformNotesForMusicBox(
     result = filtered;
   }
 
-  // 4. Adapt to Music Box Comb Count (18, 30, 50 tines)
-  // Shift pitches into standard 18-note C4 to C6 or 30-note G3 to C6 comb register
-  const minMidi = settings.combCount === 18 ? 60 : 55; // C4 or G3
-  const maxMidi = settings.combCount === 18 ? 84 : 96; // C6 or C7
+  // 4. Adapt to Music Box Comb Count (18, 30, 50, 72, 100 tines)
+  // If 100 (Unlimited/Full Orchestra), retain original pitch range without folding octaves
+  if (settings.combCount < 100) {
+    const minMidi =
+      settings.combCount === 18 ? 60 : settings.combCount === 30 ? 55 : settings.combCount === 50 ? 48 : 36; // C4, G3, C3, C2
+    const maxMidi =
+      settings.combCount === 18 ? 84 : settings.combCount === 30 ? 96 : settings.combCount === 50 ? 97 : 108; // C6, C7, C7#, C8
 
-  result = result.map((n) => {
-    let shifted = n.midiNumber;
-    while (shifted < minMidi) shifted += 12;
-    while (shifted > maxMidi) shifted -= 12;
-    return {
-      ...n,
-      midiNumber: shifted,
-      pitch: midiToPitch(shifted),
-    };
-  });
+    result = result.map((n) => {
+      let shifted = n.midiNumber;
+      while (shifted < minMidi) shifted += 12;
+      while (shifted > maxMidi) shifted -= 12;
+      return {
+        ...n,
+        midiNumber: shifted,
+        pitch: midiToPitch(shifted),
+      };
+    });
+  }
 
   return result;
 }

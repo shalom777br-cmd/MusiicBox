@@ -95,11 +95,20 @@ async function startServer() {
 
   // API 1: Parse uploaded score (Image/PDF/Text) using Gemini OCR & Music Analysis
   app.post("/api/parse-music", async (req, res) => {
+    res.setHeader("Content-Type", "application/json");
     try {
       const { fileData, mimeType, fileName, textContent } = req.body;
 
       if (!fileData && !textContent) {
-        return res.status(400).json({ success: false, error: "Missing file data or content" });
+        return res.status(400).json({ success: false, error: "ファイルデータまたはテキストが見つかりません" });
+      }
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({
+          success: false,
+          error: "GEMINI_API_KEYが設定されていません。AI StudioのSettingsからAPIキーを設定してください。",
+        });
       }
 
       console.log(`Analyzing music sheet/file: ${fileName || "text data"}`);
@@ -159,7 +168,7 @@ Return ONLY JSON matching this structure:
       }
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.6-flash",
+        model: "gemini-2.5-flash",
         contents: { parts: contentsParts },
         config: {
           maxOutputTokens: 8192,
@@ -203,7 +212,7 @@ Return ONLY JSON matching this structure:
         });
       }
 
-      res.json({ success: true, data: parsedData });
+      return res.json({ success: true, data: parsedData });
     } catch (error: any) {
       console.error("Error in /api/parse-music:", error);
       let errorMessage = "楽譜の解析中にエラーが発生しました";
@@ -212,7 +221,7 @@ Return ONLY JSON matching this structure:
       } else if (error?.message) {
         errorMessage = error.message;
       }
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error: errorMessage,
       });
@@ -221,8 +230,17 @@ Return ONLY JSON matching this structure:
 
   // API 2: Optimize note arrangement specifically for music box limitations using Gemini AI
   app.post("/api/optimize-musicbox", async (req, res) => {
+    res.setHeader("Content-Type", "application/json");
     try {
       const { title, notes, combCount = 18, settings } = req.body;
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({
+          success: false,
+          error: "GEMINI_API_KEYが設定されていません。",
+        });
+      }
 
       const prompt = `
 You are a master music box craftsman and arranger.
@@ -255,7 +273,7 @@ Return ONLY JSON:
 `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.6-flash",
+        model: "gemini-2.5-flash",
         contents: `${prompt}\nInput notes JSON:\n${JSON.stringify(notes?.slice(0, 500) || [])}`,
         config: {
           responseMimeType: "application/json",
@@ -294,7 +312,7 @@ Return ONLY JSON:
         });
       }
 
-      res.json({ success: true, data: resultData });
+      return res.json({ success: true, data: resultData });
     } catch (error: any) {
       console.error("Error in /api/optimize-musicbox:", error);
       let errorMessage = "AI最適化処理中にエラーが発生しました";
@@ -303,7 +321,7 @@ Return ONLY JSON:
       } else if (error?.message) {
         errorMessage = error.message;
       }
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error: errorMessage,
       });

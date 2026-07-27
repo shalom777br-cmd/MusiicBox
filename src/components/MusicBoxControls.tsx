@@ -29,9 +29,11 @@ const TIMBRE_OPTIONS: { id: TimbreType; label: string; desc: string; previewMidi
 ];
 
 const COMB_OPTIONS: { count: CombType; label: string; desc: string }[] = [
-  { count: 18, label: '18弁 (スタンダード)', desc: '1.5〜2オクターブ。主旋律中心のコンパクトなオルゴール' },
-  { count: 30, label: '30弁 (ミディアム)', desc: '2.5オクターブ。繊細なアルペジオ伴奏も再生可能' },
-  { count: 50, label: '50弁 (プレミアム)', desc: '3.5オクターブ。豊かな和音とフルスケール表現' },
+  { count: 18, label: '18弁 (コンパクト)', desc: '1.5〜2オクターブ。主旋律中心のスタンダード表現' },
+  { count: 30, label: '30弁 (ミディアム)', desc: '2.5オクターブ。繊細なアルペジオ伴奏も再生' },
+  { count: 50, label: '50弁 (ラージ)', desc: '3.5オクターブ。豊かな和音と複写音響' },
+  { count: 72, label: '72弁 (グランド)', desc: '広大な音域で複雑な多重和音と対角旋律を再現' },
+  { count: 100, label: '100弁/無制限 (フルオーケストラ)', desc: '制限なし！原曲の全音符・全和音・重奏をそのまま完全発音' },
 ];
 
 export default function MusicBoxControls({
