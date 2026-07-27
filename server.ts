@@ -168,10 +168,10 @@ Return ONLY JSON matching this structure:
       }
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.6-flash",
         contents: { parts: contentsParts },
         config: {
-          maxOutputTokens: 8192,
+          maxOutputTokens: 65536,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -273,7 +273,7 @@ Return ONLY JSON:
 `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.6-flash",
         contents: `${prompt}\nInput notes JSON:\n${JSON.stringify(notes?.slice(0, 500) || [])}`,
         config: {
           responseMimeType: "application/json",
