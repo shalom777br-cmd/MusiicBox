@@ -362,6 +362,18 @@ export function transformNotesForMusicBox(
 ): MusicNote[] {
   let result = [...notes];
 
+  // 0. Apply keyShift (if non-zero)
+  if (settings.keyShift) {
+    result = result.map((n) => {
+      const shifted = n.midiNumber + settings.keyShift;
+      return {
+        ...n,
+        midiNumber: shifted,
+        pitch: midiToPitch(shifted),
+      };
+    });
+  }
+
   // 1. Remove Low Bass (if checked)
   if (settings.removeBass) {
     result = result.filter((n) => n.midiNumber >= 55); // Keep middle C (C4 = 60) and above

@@ -22,6 +22,7 @@ import {
   Check,
   X,
   Mic,
+  RefreshCw,
 } from 'lucide-react';
 import { MusicNote, MusicBoxSettings, ScoreMeta } from '../types';
 import { MusicBoxAudioEngine } from '../utils/audioEngine';
@@ -36,33 +37,72 @@ interface StaffNotationEditorProps {
   meta: ScoreMeta;
 }
 
+function getKeySignatureAccidentalForStep(step: number, keySig: number): '' | '#' | 'b' {
+  if (keySig === 0) return '';
+  const stepInOctave = ((step % 7) + 7) % 7;
+  const sharpsOrder = [3, 0, 4, 1, 5, 2, 6]; // F, C, G, D, A, E, B
+  const flatsOrder = [6, 2, 5, 1, 4, 0, 3];  // B, E, A, D, G, C, F
+
+  if (keySig > 0) {
+    const activeSharps = sharpsOrder.slice(0, keySig);
+    if (activeSharps.includes(stepInOctave)) return '#';
+  } else if (keySig < 0) {
+    const activeFlats = flatsOrder.slice(0, Math.abs(keySig));
+    if (activeFlats.includes(stepInOctave)) return 'b';
+  }
+  return '';
+}
+
 // Diatonic steps: C4=0, D4=1, E4=2(Line1), F4=3, G4=4(Line2), A4=5, B4=6(Line3),
 // C5=7, D5=8(Line4), E5=9, F5=10(Line5), G5=11, A5=12, B5=13, C6=14
-function midiToStaffInfo(midi: number): { step: number; accidental: '' | '#' | 'b' } {
+function midiToStaffInfo(midi: number, keySig: number = 0): { step: number; accidental: '' | '#' | 'b' } {
   const octave = Math.floor(midi / 12) - 1;
   const semitone = ((midi % 12) + 12) % 12;
 
-  const map: { step: number; accidental: '' | '#' }[] = [
-    { step: 0, accidental: '' },  // C
-    { step: 0, accidental: '#' }, // C#
-    { step: 1, accidental: '' },  // D
-    { step: 1, accidental: '#' }, // D#
-    { step: 2, accidental: '' },  // E
-    { step: 3, accidental: '' },  // F
-    { step: 3, accidental: '#' }, // F#
-    { step: 4, accidental: '' },  // G
-    { step: 4, accidental: '#' }, // G#
-    { step: 5, accidental: '' },  // A
-    { step: 5, accidental: '#' }, // A#
-    { step: 6, accidental: '' },  // B
-  ];
-
-  const info = map[semitone] || { step: 0, accidental: '' };
-  const step = (octave - 4) * 7 + info.step;
-  return { step, accidental: info.accidental };
+  if (keySig < 0) {
+    const flatMap: { step: number; accidental: '' | 'b' }[] = [
+      { step: 0, accidental: '' },  // C
+      { step: 1, accidental: 'b' }, // Db
+      { step: 1, accidental: '' },  // D
+      { step: 2, accidental: 'b' }, // Eb
+      { step: 2, accidental: '' },  // E
+      { step: 3, accidental: '' },  // F
+      { step: 4, accidental: 'b' }, // Gb
+      { step: 4, accidental: '' },  // G
+      { step: 5, accidental: 'b' }, // Ab
+      { step: 5, accidental: '' },  // A
+      { step: 6, accidental: 'b' }, // Bb
+      { step: 6, accidental: '' },  // B
+    ];
+    const info = flatMap[semitone] || { step: 0, accidental: '' };
+    const step = (octave - 4) * 7 + info.step;
+    return { step, accidental: info.accidental };
+  } else {
+    const sharpMap: { step: number; accidental: '' | '#' }[] = [
+      { step: 0, accidental: '' },  // C
+      { step: 0, accidental: '#' }, // C#
+      { step: 1, accidental: '' },  // D
+      { step: 1, accidental: '#' }, // D#
+      { step: 2, accidental: '' },  // E
+      { step: 3, accidental: '' },  // F
+      { step: 3, accidental: '#' }, // F#
+      { step: 4, accidental: '' },  // G
+      { step: 4, accidental: '#' }, // G#
+      { step: 5, accidental: '' },  // A
+      { step: 5, accidental: '#' }, // A#
+      { step: 6, accidental: '' },  // B
+    ];
+    const info = sharpMap[semitone] || { step: 0, accidental: '' };
+    const step = (octave - 4) * 7 + info.step;
+    return { step, accidental: info.accidental };
+  }
 }
 
-function staffStepToPitch(step: number, accidental: '' | '#' | 'b' = ''): { midi: number; pitch: string; japaneseName: string } {
+function staffStepToPitch(
+  step: number,
+  accidental: '' | '#' | 'b' = '',
+  keySig: number = 0
+): { midi: number; pitch: string; japaneseName: string } {
   const octave = Math.floor(step / 7) + 4;
   const stepInOctave = ((step % 7) + 7) % 7; // 0..6
 
@@ -70,15 +110,20 @@ function staffStepToPitch(step: number, accidental: '' | '#' | 'b' = ''): { midi
   const baseJap = ['ド', 'レ', 'ミ', 'ファ', 'ソ', 'ラ', 'シ'];
   const baseMidis = [0, 2, 4, 5, 7, 9, 11];
 
+  let effectiveAccidental = accidental;
+  if (!effectiveAccidental) {
+    effectiveAccidental = getKeySignatureAccidentalForStep(step, keySig);
+  }
+
   let semitone = baseMidis[stepInOctave];
   let name = baseNames[stepInOctave];
   let jName = baseJap[stepInOctave];
 
-  if (accidental === '#') {
+  if (effectiveAccidental === '#') {
     semitone += 1;
     name += '#';
     jName += '♯';
-  } else if (accidental === 'b') {
+  } else if (effectiveAccidental === 'b') {
     semitone -= 1;
     name += 'b';
     jName += '♭';
@@ -136,7 +181,8 @@ export default function StaffNotationEditor({
 }: StaffNotationEditorProps) {
   const [selectedDuration, setSelectedDuration] = useState<number>(1); // 1 beat = quarter note
   const [selectedAccidental, setSelectedAccidental] = useState<'' | '#' | 'b'>('');
-  const [keySignature, setKeySignature] = useState<number>(0); // -7 to +7
+  const [keySignature, setKeySignature] = useState<number>(0); // -7 to +7 (Current key signature on staff)
+  const [targetKeySignature, setTargetKeySignature] = useState<number>(0); // Selected key signature in dropdown
   const [editorMode, setEditorMode] = useState<'add' | 'delete'>('add');
   const [measuresCount, setMeasuresCount] = useState<number>(8); // 8 measures by default (32 beats)
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -145,36 +191,102 @@ export default function StaffNotationEditor({
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
   const [confirmClear, setConfirmClear] = useState<boolean>(false);
 
-  // Key Signature & Transposition helpers
-  const handleKeySignatureChange = (newKey: number) => {
-    setKeySignature(newKey);
-    const opt = KEY_SIGNATURE_OPTIONS.find((o) => o.value === newKey);
-    showToast(`調を「${opt?.shortLabel || '指定の調'}」に設定しました。`);
+  // Helper to calculate midi to pitch string like 'C4', 'F#4', 'Bb4'
+  const midiToPitchString = (midi: number): string => {
+    const octave = Math.floor(midi / 12) - 1;
+    const semitone = ((midi % 12) + 12) % 12;
+    const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    return `${noteNames[semitone]}${octave}`;
   };
 
-  const handleTransposeToKey = (targetKey: number) => {
-    const currentOpt = KEY_SIGNATURE_OPTIONS.find((o) => o.value === keySignature) || KEY_SIGNATURE_OPTIONS[0];
+  // Calculate semitone difference between current keySignature and a target key
+  const getSemitoneDiff = (currentKey: number, targetKey: number): number => {
+    const currentOpt = KEY_SIGNATURE_OPTIONS.find((o) => o.value === currentKey) || KEY_SIGNATURE_OPTIONS[0];
     const targetOpt = KEY_SIGNATURE_OPTIONS.find((o) => o.value === targetKey) || KEY_SIGNATURE_OPTIONS[0];
-    let semitoneDiff = targetOpt.semitoneOffset - currentOpt.semitoneOffset;
-    if (semitoneDiff > 6) semitoneDiff -= 12;
-    if (semitoneDiff < -6) semitoneDiff += 12;
+    let diff = targetOpt.semitoneOffset - currentOpt.semitoneOffset;
+    if (diff > 6) diff -= 12;
+    if (diff < -6) diff += 12;
+    return diff;
+  };
 
-    if (semitoneDiff === 0 || notes.length === 0) return;
+  // Key Signature & Transposition helpers
+  const handleKeySignatureSelect = (newKey: number) => {
+    setTargetKeySignature(newKey);
+    const opt = KEY_SIGNATURE_OPTIONS.find((o) => o.value === newKey);
+    if (notes.length === 0) {
+      setKeySignature(newKey);
+      showToast(`調記号を「${opt?.shortLabel || '指定の調'}」に設定しました。`);
+    } else {
+      const diff = getSemitoneDiff(keySignature, newKey);
+      const diffStr = diff > 0 ? `+${diff}` : `${diff}`;
+      showToast(`移調先に「${opt?.shortLabel}」（${diffStr}半音）を選択しました。「この調に移調する」ボタンを押して適用してください。`);
+    }
+  };
+
+  const executeTransposition = (fromKey: number, toKey: number) => {
+    const semitoneDiff = getSemitoneDiff(fromKey, toKey);
+    const toOpt = KEY_SIGNATURE_OPTIONS.find((o) => o.value === toKey) || KEY_SIGNATURE_OPTIONS[0];
+
+    if (notes.length === 0) {
+      setKeySignature(toKey);
+      setTargetKeySignature(toKey);
+      showToast(`調を「${toOpt.shortLabel}」に設定しました。`);
+      return;
+    }
+
+    if (semitoneDiff === 0 && fromKey === toKey) {
+      showToast(`すでに「${toOpt.shortLabel}」に設定されています。`);
+      return;
+    }
 
     const transposed = notes.map((n) => {
       const newMidi = Math.max(36, Math.min(96, n.midiNumber + semitoneDiff));
-      const info = midiToStaffInfo(newMidi);
-      const { pitch } = staffStepToPitch(info.step, info.accidental);
       return {
         ...n,
         midiNumber: newMidi,
-        pitch: pitch,
+        pitch: midiToPitch(newMidi),
       };
     });
 
     onChangeNotes(transposed);
-    setKeySignature(targetKey);
-    showToast(`楽譜全体を ${semitoneDiff > 0 ? `+${semitoneDiff}` : semitoneDiff} 半音移調しました！`);
+    setKeySignature(toKey);
+    setTargetKeySignature(toKey);
+
+    if (audioEngine) {
+      audioEngine.unlockAudio();
+      // Play Root Note chime preview of the new key
+      const rootMidi = 60 + toOpt.semitoneOffset;
+      audioEngine.playSingleNote(rootMidi, 1.2);
+    }
+
+    const diffStr = semitoneDiff > 0 ? `+${semitoneDiff}` : `${semitoneDiff}`;
+    showToast(`全 ${notes.length} 音を「${toOpt.shortLabel}」に移調（${diffStr}半音）しました！`);
+  };
+
+  const executeShiftBySemitones = (semitones: number) => {
+    if (notes.length === 0) {
+      showToast('音符を入力してから移調してください。');
+      return;
+    }
+
+    const transposed = notes.map((n) => {
+      const newMidi = Math.max(36, Math.min(96, n.midiNumber + semitones));
+      return {
+        ...n,
+        midiNumber: newMidi,
+        pitch: midiToPitch(newMidi),
+      };
+    });
+
+    onChangeNotes(transposed);
+
+    if (audioEngine) {
+      audioEngine.unlockAudio();
+      audioEngine.playSingleNote(60 + semitones, 1.0);
+    }
+
+    const diffStr = semitones > 0 ? `+${semitones}` : `${semitones}`;
+    showToast(`全 ${notes.length} 音を ${diffStr} 半音移調しました！`);
   };
 
   // Save / Load state
@@ -261,12 +373,12 @@ export default function StaffNotationEditor({
     const rawStep = 2 + (yBaseE4 - clickY) / stepHeight;
     const snappedStep = Math.min(16, Math.max(-2, Math.round(rawStep))); // constrain between A3 and D6
 
-    const { midi, pitch, japaneseName } = staffStepToPitch(snappedStep, selectedAccidental);
+    const { midi, pitch, japaneseName } = staffStepToPitch(snappedStep, selectedAccidental, keySignature);
 
     if (editorMode === 'delete') {
       // Find note at or near beat and step to delete
       const updated = notes.filter((n) => {
-        const info = midiToStaffInfo(n.midiNumber);
+        const info = midiToStaffInfo(n.midiNumber, keySignature);
         const sameStep = Math.abs(info.step - snappedStep) <= 0.5;
         const sameBeat = Math.abs(n.startTime - snappedBeat) < 0.4;
         return !(sameStep && sameBeat);
@@ -282,7 +394,7 @@ export default function StaffNotationEditor({
 
       // Check if a note already exists at this exact beat & step
       const existingIndex = notes.findIndex((n) => {
-        const info = midiToStaffInfo(n.midiNumber);
+        const info = midiToStaffInfo(n.midiNumber, keySignature);
         return Math.abs(info.step - snappedStep) <= 0.5 && Math.abs(n.startTime - snappedBeat) < 0.4;
       });
 
@@ -748,15 +860,15 @@ export default function StaffNotationEditor({
                 </div>
               </div>
 
-              {/* Key Signature Selector (調・Key Signatureの設定) placed directly below */}
+              {/* Key Signature Selector & Transposition Controls */}
               <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-[#3d251a]/60">
                 <span className="text-[#c19a6b] font-semibold flex items-center space-x-1">
                   <span>調 (調記号):</span>
                 </span>
-                <div className="flex items-center space-x-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <select
-                    value={keySignature}
-                    onChange={(e) => handleKeySignatureChange(Number(e.target.value))}
+                    value={targetKeySignature}
+                    onChange={(e) => handleKeySignatureSelect(Number(e.target.value))}
                     className="bg-[#25150d] text-[#e5d3b3] border border-[#3d251a] hover:border-[#c19a6b] rounded-lg px-2.5 py-1 text-xs font-semibold cursor-pointer focus:outline-none focus:border-[#c19a6b]"
                   >
                     {KEY_SIGNATURE_OPTIONS.map((opt) => (
@@ -766,15 +878,47 @@ export default function StaffNotationEditor({
                     ))}
                   </select>
 
-                  {notes.length > 0 && (
+                  {(() => {
+                    const diff = getSemitoneDiff(keySignature, targetKeySignature);
+                    const diffLabel = diff > 0 ? `+${diff}半音` : diff < 0 ? `${diff}半音` : '0半音';
+                    const isDiffNonZero = diff !== 0 || keySignature !== targetKeySignature;
+
+                    return (
+                      <button
+                        onClick={() => executeTransposition(keySignature, targetKeySignature)}
+                        disabled={notes.length === 0}
+                        className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer disabled:cursor-not-allowed flex items-center space-x-1 shadow-sm active:scale-95 ${
+                          isDiffNonZero
+                            ? 'bg-[#c19a6b] hover:bg-[#d4ac7d] text-[#1c0f0a] ring-2 ring-[#c19a6b]/40 animate-pulse'
+                            : 'bg-[#3d251a] hover:bg-[#4d3022] text-[#e5d3b3]/80'
+                        }`}
+                        title="楽譜内の全音符を選択した調に移調（キーチェンジ）します"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>この調に移調する ({diffLabel})</span>
+                      </button>
+                    );
+                  })()}
+
+                  {/* Quick +/- 1 Semitone Shift Buttons */}
+                  <div className="inline-flex rounded-lg bg-[#25150d] p-0.5 border border-[#3d251a] space-x-0.5">
                     <button
-                      onClick={() => handleTransposeToKey(keySignature)}
-                      className="px-2 py-1 bg-[#25150d] hover:bg-[#3d251a] border border-[#c19a6b]/50 text-[#c19a6b] hover:text-[#e5d3b3] rounded-md text-[11px] font-bold transition-all cursor-pointer flex items-center space-x-1"
-                      title="音符全体をこの調に移調（キーチェンジ）します"
+                      onClick={() => executeShiftBySemitones(-1)}
+                      disabled={notes.length === 0}
+                      className="px-2 py-0.5 text-xs font-bold text-[#e5d3b3]/80 hover:text-[#e5d3b3] hover:bg-[#3d251a] disabled:opacity-40 rounded transition-all cursor-pointer"
+                      title="全音符を1半音下げる (♭)"
                     >
-                      <span>この調に移調する</span>
+                      -1半音
                     </button>
-                  )}
+                    <button
+                      onClick={() => executeShiftBySemitones(1)}
+                      disabled={notes.length === 0}
+                      className="px-2 py-0.5 text-xs font-bold text-[#e5d3b3]/80 hover:text-[#e5d3b3] hover:bg-[#3d251a] disabled:opacity-40 rounded transition-all cursor-pointer"
+                      title="全音符を1半音上げる (♯)"
+                    >
+                      +1半音
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1109,7 +1253,16 @@ export default function StaffNotationEditor({
 
               {/* Render Existing Placed Notes */}
               {notes.map((note) => {
-                const { step, accidental } = midiToStaffInfo(note.midiNumber);
+                const { step, accidental } = midiToStaffInfo(note.midiNumber, keySignature);
+                const keyAccidental = getKeySignatureAccidentalForStep(step, keySignature);
+
+                let displayAccidental = '';
+                if (accidental !== keyAccidental) {
+                  if (accidental === '#') displayAccidental = '♯';
+                  else if (accidental === 'b') displayAccidental = '♭';
+                  else if (accidental === '' && keyAccidental !== '') displayAccidental = '♮';
+                }
+
                 const x = getBeatX(note.startTime);
                 const y = getStepY(step);
                 const isStemDown = step >= 6; // Stem goes down for B4 (step 6) and above
@@ -1147,8 +1300,8 @@ export default function StaffNotationEditor({
                       />
                     ))}
 
-                    {/* Accidental (# / b) */}
-                    {accidental && (
+                    {/* Accidental (# / b / natural) if not covered by key signature */}
+                    {displayAccidental && (
                       <text
                         x={x - 14}
                         y={y + 4}
@@ -1157,7 +1310,7 @@ export default function StaffNotationEditor({
                         fill="#2d1b14"
                         className="pointer-events-none"
                       >
-                        {accidental === '#' ? '♯' : '♭'}
+                        {displayAccidental}
                       </text>
                     )}
 
