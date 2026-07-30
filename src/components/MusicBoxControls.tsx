@@ -62,7 +62,7 @@ export default function MusicBoxControls({
             <Sliders className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-lg font-serif italic text-[#c19a6b]">② オルゴール変換＆音色調整</h2>
+            <h2 className="text-lg font-serif italic text-[#c19a6b]">オルゴール変換＆音色調整</h2>
             <p className="text-xs text-[#e5d3b3]/60">音色 preset・旋律抽出・テンポ・弁数（音域）の設定</p>
           </div>
         </div>

@@ -148,7 +148,7 @@ export default function ExportPanel({ notes, settings, meta }: ExportPanelProps)
             <Download className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-lg font-serif italic text-[#c19a6b]">③ オルゴール音源・データのダウンロード</h2>
+            <h2 className="text-lg font-serif italic text-[#c19a6b]">オルゴール音源・データのダウンロード</h2>
             <p className="text-xs text-[#e5d3b3]/60">WAV高音質オーディオ、標準MIDI、JSON楽譜ファイルの保存・試聴</p>
           </div>
         </div>

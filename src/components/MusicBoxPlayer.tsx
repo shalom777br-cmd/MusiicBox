@@ -7,7 +7,6 @@ import {
   Volume2,
   Sparkles,
   Clock,
-  Disc,
   Music,
 } from 'lucide-react';
 import { MusicNote, MusicBoxSettings, ScoreMeta } from '../types';
@@ -310,33 +309,8 @@ export default function MusicBoxPlayer({
 
   return (
     <div className="bg-[#2d1b14] border border-[#3d251a] rounded-[32px] p-6 sm:p-8 shadow-2xl backdrop-blur-md space-y-6">
-      {/* Top Song Title & Comb Badge */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-[#3d251a] pb-4">
-        <div className="flex items-center space-x-4">
-          {/* Animated Crank Handle Icon */}
-          <div
-            className={`w-12 h-12 rounded-full bg-[#1c0f0a] border border-[#3d251a] flex items-center justify-center text-[#c19a6b] shadow-[0_0_15px_rgba(193,154,107,0.2)] ${
-              isPlaying ? 'animate-spin-slow' : ''
-            }`}
-          >
-            <Disc className="w-6 h-6 text-[#c19a6b]" />
-          </div>
-
-          <div>
-            <div className="flex items-center space-x-2.5">
-              <h3 className="text-xl font-serif italic text-[#c19a6b]">
-                {meta.title || 'オルゴール曲'}
-              </h3>
-              <span className="text-[10px] px-2.5 py-0.5 bg-[#1c0f0a] border border-[#3d251a] rounded-full text-[#c19a6b] uppercase tracking-wider">
-                {settings.combCount}弁
-              </span>
-            </div>
-            <p className="text-xs text-[#e5d3b3]/60 mt-0.5">
-              {meta.composer} • {notes.length}音 • {settings.timbre === 'wooden' ? '木製' : 'クラシック'}音色
-            </p>
-          </div>
-        </div>
-
+      {/* Top Controls & Status Indicators */}
+      <div className="flex flex-row items-center justify-end gap-4 border-b border-[#3d251a] pb-4">
         {/* Status Indicators */}
         <div className="flex flex-wrap items-center gap-2">
           {/* Visual Active Sound Signal Indicator */}

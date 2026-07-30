@@ -18,7 +18,7 @@ export default function AiAnalysisCard({ meta, commentary }: AiAnalysisCardProps
         </div>
         <div>
           <h3 className="text-base font-serif italic text-[#c19a6b] flex items-center space-x-2">
-            <span>④ AI自動最適化・オルゴール編曲解析</span>
+            <span>AI自動最適化・オルゴール編曲解析</span>
             <span className="text-[10px] px-2.5 py-0.5 bg-[#1c0f0a] border border-[#3d251a] text-[#c19a6b] rounded-full uppercase tracking-wider font-mono">
               Gemini 2.5 Flash
             </span>

@@ -197,9 +197,9 @@ export default function App() {
         />
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
-          {/* Left Pillar: Input, Controls, Export, & AI Commentary */}
+          {/* Left Pillar: Input, Export, & AI Commentary */}
           <div className="md:col-span-5 space-y-6">
-            {/* ① Sheet Music Upload & Sample Selector */}
+            {/* Sheet Music Upload & Sample Selector */}
             <ScoreUpload
               onScoreLoaded={handleScoreLoaded}
               isLoading={isLoading}
@@ -207,7 +207,23 @@ export default function App() {
               activeSongId={activeSongId}
             />
 
-            {/* ② Controls & Sound Presets */}
+            {/* Export & Downloads (WAV Preview & Files) */}
+            <ExportPanel
+              notes={displayNotes}
+              settings={settings}
+              meta={meta}
+            />
+
+            {/* AI Analysis & Commentary Card */}
+            <AiAnalysisCard
+              meta={meta}
+              commentary={aiCommentary}
+            />
+          </div>
+
+          {/* Right Pillar: Controls, Player Visualizer & Interactive Punch Card Editor */}
+          <div className="md:col-span-7 space-y-6 md:sticky md:top-6">
+            {/* Music Box Conversion & Timbre Adjustment Controls */}
             <MusicBoxControls
               settings={settings}
               onUpdateSettings={setSettings}
@@ -217,22 +233,6 @@ export default function App() {
               notesCount={displayNotes.length}
             />
 
-            {/* ③ Export & Downloads (WAV Preview & Files) */}
-            <ExportPanel
-              notes={displayNotes}
-              settings={settings}
-              meta={meta}
-            />
-
-            {/* ④ AI Analysis & Commentary Card */}
-            <AiAnalysisCard
-              meta={meta}
-              commentary={aiCommentary}
-            />
-          </div>
-
-          {/* Right Pillar: Player Visualizer & Interactive Punch Card Editor */}
-          <div className="md:col-span-7 space-y-6 md:sticky md:top-6">
             {/* Visualizer & Music Box Mechanical Player */}
             <MusicBoxPlayer
               notes={displayNotes}
