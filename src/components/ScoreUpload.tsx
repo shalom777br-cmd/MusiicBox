@@ -282,36 +282,38 @@ export default function ScoreUpload({
       )}
 
       {/* Preset Sample Songs Compact Selector */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-1 border-t border-[#3d251a]/60">
-        <span className="text-[11px] font-serif italic text-[#c19a6b] flex items-center space-x-1 shrink-0">
-          <Sparkles className="w-3 h-3 text-[#c19a6b]" />
-          <span>サンプル名曲（ワンクリックロード）:</span>
-        </span>
+      {SAMPLE_SONGS.length > 0 && (
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-1 border-t border-[#3d251a]/60">
+          <span className="text-[11px] font-serif italic text-[#c19a6b] flex items-center space-x-1 shrink-0">
+            <Sparkles className="w-3 h-3 text-[#c19a6b]" />
+            <span>サンプル曲（ワンクリックロード）:</span>
+          </span>
 
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 w-full sm:w-auto">
-          {SAMPLE_SONGS.map((song) => {
-            const isActive = activeSongId === song.id;
-            return (
-              <button
-                key={song.id}
-                onClick={() => handleSelectSample(song)}
-                className={`px-2 py-1 rounded-lg border text-left transition-all cursor-pointer ${
-                  isActive
-                    ? 'bg-[#c19a6b]/20 border-[#c19a6b] text-[#e5d3b3] font-bold shadow-xs'
-                    : 'bg-[#1c0f0a] hover:bg-[#3d251a]/50 border-[#3d251a] text-[#e5d3b3]/75 hover:border-[#c19a6b]/40'
-                }`}
-              >
-                <div className="truncate text-[10px] text-[#c19a6b] leading-tight">
-                  {song.composer}
-                </div>
-                <div className="truncate text-[11px] font-medium leading-tight">
-                  {song.titleJa}
-                </div>
-              </button>
-            );
-          })}
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 w-full sm:w-auto">
+            {SAMPLE_SONGS.map((song) => {
+              const isActive = activeSongId === song.id;
+              return (
+                <button
+                  key={song.id}
+                  onClick={() => handleSelectSample(song)}
+                  className={`px-2 py-1 rounded-lg border text-left transition-all cursor-pointer ${
+                    isActive
+                      ? 'bg-[#c19a6b]/20 border-[#c19a6b] text-[#e5d3b3] font-bold shadow-xs'
+                      : 'bg-[#1c0f0a] hover:bg-[#3d251a]/50 border-[#3d251a] text-[#e5d3b3]/75 hover:border-[#c19a6b]/40'
+                  }`}
+                >
+                  <div className="truncate text-[10px] text-[#c19a6b] leading-tight">
+                    {song.composer}
+                  </div>
+                  <div className="truncate text-[11px] font-medium leading-tight">
+                    {song.titleJa}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

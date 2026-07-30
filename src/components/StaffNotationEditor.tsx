@@ -14,10 +14,19 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Save,
+  FolderOpen,
+  Download,
+  Upload,
+  Bookmark,
+  Check,
+  X,
+  Mic,
 } from 'lucide-react';
 import { MusicNote, MusicBoxSettings, ScoreMeta } from '../types';
 import { MusicBoxAudioEngine } from '../utils/audioEngine';
 import { midiToPitch, pitchToMidi } from '../utils/musicParsers';
+import HummingRecorderModal from './HummingRecorderModal';
 
 interface StaffNotationEditorProps {
   notes: MusicNote[];
@@ -80,41 +89,17 @@ function staffStepToPitch(step: number, accidental: '' | '#' | 'b' = ''): { midi
   return { midi, pitch, japaneseName: `${jName}${octave}` };
 }
 
-// Preset phrases for quick input
-const SAMPLE_PRESETS = [
-  {
-    name: 'ドレミファソラシド ( Scale )',
-    notes: [
-      { id: 'p1', pitch: 'C4', midiNumber: 60, startTime: 0, duration: 1 },
-      { id: 'p2', pitch: 'D4', midiNumber: 62, startTime: 1, duration: 1 },
-      { id: 'p3', pitch: 'E4', midiNumber: 64, startTime: 2, duration: 1 },
-      { id: 'p4', pitch: 'F4', midiNumber: 65, startTime: 3, duration: 1 },
-      { id: 'p5', pitch: 'G4', midiNumber: 67, startTime: 4, duration: 1 },
-      { id: 'p6', pitch: 'A4', midiNumber: 69, startTime: 5, duration: 1 },
-      { id: 'p7', pitch: 'B4', midiNumber: 71, startTime: 6, duration: 1 },
-      { id: 'p8', pitch: 'C5', midiNumber: 72, startTime: 7, duration: 1 },
-    ],
-  },
-  {
-    name: 'キラキラ星 ( Twinkle Star )',
-    notes: [
-      { id: 't1', pitch: 'C4', midiNumber: 60, startTime: 0, duration: 1 },
-      { id: 't2', pitch: 'C4', midiNumber: 60, startTime: 1, duration: 1 },
-      { id: 't3', pitch: 'G4', midiNumber: 67, startTime: 2, duration: 1 },
-      { id: 't4', pitch: 'G4', midiNumber: 67, startTime: 3, duration: 1 },
-      { id: 't5', pitch: 'A4', midiNumber: 69, startTime: 4, duration: 1 },
-      { id: 't6', pitch: 'A4', midiNumber: 69, startTime: 5, duration: 1 },
-      { id: 't7', pitch: 'G4', midiNumber: 67, startTime: 6, duration: 2 },
-      { id: 't8', pitch: 'F4', midiNumber: 65, startTime: 8, duration: 1 },
-      { id: 't9', pitch: 'F4', midiNumber: 65, startTime: 9, duration: 1 },
-      { id: 't10', pitch: 'E4', midiNumber: 64, startTime: 10, duration: 1 },
-      { id: 't11', pitch: 'E4', midiNumber: 64, startTime: 11, duration: 1 },
-      { id: 't12', pitch: 'D4', midiNumber: 62, startTime: 12, duration: 1 },
-      { id: 't13', pitch: 'D4', midiNumber: 62, startTime: 13, duration: 1 },
-      { id: 't14', pitch: 'C4', midiNumber: 60, startTime: 14, duration: 2 },
-    ],
-  },
-];
+// Preset phrases for quick input (empty)
+const SAMPLE_PRESETS: { name: string; notes: MusicNote[] }[] = [];
+
+interface SavedScoreItem {
+  id: string;
+  title: string;
+  savedAt: string;
+  notesCount: number;
+  notes: MusicNote[];
+  measuresCount?: number;
+}
 
 export default function StaffNotationEditor({
   notes,
@@ -133,8 +118,40 @@ export default function StaffNotationEditor({
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
   const [confirmClear, setConfirmClear] = useState<boolean>(false);
 
+  // Save / Load state
+  const [scoreTitle, setScoreTitle] = useState<string>(meta.title || 'マイオリジナル曲');
+  const [showSaveModal, setShowSaveModal] = useState<boolean>(false);
+  const [showLibraryModal, setShowLibraryModal] = useState<boolean>(false);
+  const [showHummingModal, setShowHummingModal] = useState<boolean>(false);
+  const [savedScores, setSavedScores] = useState<SavedScoreItem[]>([]);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const handleLoadFromHumming = (newNotes: MusicNote[], newMeta: ScoreMeta) => {
+    onChangeNotes(newNotes);
+    if (newMeta.title) setScoreTitle(newMeta.title);
+    showToast(`「${newMeta.title || '鼻歌のオリジナル曲'}」を五線譜に読み込みました！`);
+  };
+
   const containerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const playbackTimerRef = useRef<number | null>(null);
+
+  // Load saved scores from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('musicbox_saved_scores');
+      if (stored) {
+        setSavedScores(JSON.parse(stored));
+      }
+    } catch (e) {
+      console.error('Failed to parse saved scores from localStorage', e);
+    }
+  }, []);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
   // Measure calculation: 4 beats per measure
   const beatsPerMeasure = 4;
@@ -320,6 +337,113 @@ export default function StaffNotationEditor({
     onChangeNotes(formatted);
   };
 
+  // Save score to LocalStorage Library
+  const handleSaveToLocalStorage = () => {
+    const titleToSave = scoreTitle.trim() || '無題の楽譜';
+    const now = new Date();
+    const formattedDate = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+
+    const newSavedItem: SavedScoreItem = {
+      id: `score_${Date.now()}`,
+      title: titleToSave,
+      savedAt: formattedDate,
+      notesCount: notes.length,
+      notes: notes,
+      measuresCount: measuresCount,
+    };
+
+    // Filter out previous item if exact same title or update
+    const filtered = savedScores.filter((s) => s.title !== titleToSave);
+    const updated = [newSavedItem, ...filtered];
+
+    setSavedScores(updated);
+    try {
+      localStorage.setItem('musicbox_saved_scores', JSON.stringify(updated));
+    } catch (e) {
+      console.error('Failed to save score to localStorage', e);
+    }
+
+    setShowSaveModal(false);
+    showToast(`「${titleToSave}」をマイ楽譜に保存しました！`);
+  };
+
+  // Load score from LocalStorage
+  const handleLoadSavedScore = (item: SavedScoreItem) => {
+    onChangeNotes(item.notes);
+    if (item.measuresCount) {
+      setMeasuresCount(item.measuresCount);
+    }
+    setScoreTitle(item.title);
+    setShowLibraryModal(false);
+    showToast(`「${item.title}」を読み込みました！`);
+  };
+
+  // Delete saved score
+  const handleDeleteSavedScore = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = savedScores.filter((s) => s.id !== id);
+    setSavedScores(updated);
+    try {
+      localStorage.setItem('musicbox_saved_scores', JSON.stringify(updated));
+    } catch (err) {
+      console.error('Failed to update localStorage', err);
+    }
+    showToast('マイ楽譜から削除しました');
+  };
+
+  // Export score as JSON file
+  const handleExportJson = () => {
+    const dataToExport = {
+      version: '1.0',
+      title: scoreTitle || 'マイ楽譜',
+      createdAt: new Date().toISOString(),
+      measuresCount,
+      notes,
+    };
+
+    const blob = new Blob([JSON.stringify(dataToExport, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(scoreTitle || 'musicbox_score').replace(/[/\\?%*:|"<>]/g, '_')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showToast('楽譜データ (.json) をダウンロードしました！');
+  };
+
+  // Import score from JSON file
+  const handleImportJsonFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string);
+        if (Array.isArray(json.notes)) {
+          onChangeNotes(json.notes);
+          if (json.measuresCount) setMeasuresCount(json.measuresCount);
+          if (json.title) setScoreTitle(json.title);
+          showToast(`ファイル「${file.name}」から楽譜を読み込みました！`);
+        } else if (Array.isArray(json)) {
+          onChangeNotes(json);
+          showToast(`ファイルから楽譜を読み込みました！`);
+        } else {
+          alert('無効な楽譜データ形式です。');
+        }
+      } catch (err) {
+        alert('JSONファイルの読み込みに失敗しました。');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   const hoverPitchInfo = useMemo(() => {
     if (!hoverState) return null;
     return staffStepToPitch(hoverState.step, selectedAccidental);
@@ -348,7 +472,69 @@ export default function StaffNotationEditor({
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Humming AI Creator Button */}
+          <button
+            onClick={() => setShowHummingModal(true)}
+            className="flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#e55353] via-[#c19a6b] to-[#d4ac7d] text-white font-extrabold shadow-lg hover:brightness-110 transition-all cursor-pointer transform hover:scale-105"
+            title="マイクで鼻歌を歌ってGeminiにオルゴール音符へ変換させます"
+          >
+            <Mic className="w-3.5 h-3.5" />
+            <span>🎤 鼻歌からオルゴール</span>
+          </button>
+
+          {/* Save to My Scores Button */}
+          <button
+            onClick={() => setShowSaveModal(true)}
+            className="flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#c19a6b] to-[#d4ac7d] text-[#1c0f0a] font-bold shadow hover:brightness-110 transition-all cursor-pointer"
+            title="現在の楽譜をブラウザに保存します"
+          >
+            <Save className="w-3.5 h-3.5" />
+            <span>マイ楽譜に保存</span>
+          </button>
+
+          {/* Open Saved Scores Library Button */}
+          <button
+            onClick={() => setShowLibraryModal(true)}
+            className="flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#25150d] border border-[#c19a6b]/60 hover:border-[#c19a6b] text-[#e5d3b3] hover:text-[#d4ac7d] transition-all cursor-pointer font-medium"
+            title="保存した楽譜の一覧を開いて読み込みます"
+          >
+            <FolderOpen className="w-3.5 h-3.5 text-[#c19a6b]" />
+            <span>マイ楽譜を開く</span>
+            {savedScores.length > 0 && (
+              <span className="ml-1 px-1.5 py-0.2 bg-[#c19a6b] text-[#1c0f0a] rounded-full text-[10px] font-bold">
+                {savedScores.length}
+              </span>
+            )}
+          </button>
+
+          {/* Export JSON Button */}
+          <button
+            onClick={handleExportJson}
+            className="flex items-center space-x-1 text-xs px-2.5 py-1.5 rounded-lg bg-[#25150d] border border-[#3d251a] hover:border-[#c19a6b] text-[#e5d3b3]/80 hover:text-[#e5d3b3] transition-all cursor-pointer"
+            title="楽譜データをJSONファイルとしてダウンロード保存します"
+          >
+            <Download className="w-3.5 h-3.5 text-[#c19a6b]" />
+            <span className="hidden sm:inline">JSON</span>保存
+          </button>
+
+          {/* Import JSON Button */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center space-x-1 text-xs px-2.5 py-1.5 rounded-lg bg-[#25150d] border border-[#3d251a] hover:border-[#c19a6b] text-[#e5d3b3]/80 hover:text-[#e5d3b3] transition-all cursor-pointer"
+            title="保存したJSONファイルを読み込んで楽譜を復元します"
+          >
+            <Upload className="w-3.5 h-3.5 text-[#c19a6b]" />
+            <span className="hidden sm:inline">JSON</span>読込
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={handleImportJsonFile}
+          />
+
           {/* Collapse / Expand Toggle Button */}
           <button
             onClick={() => setIsExpanded(!isExpanded)}
@@ -510,19 +696,21 @@ export default function StaffNotationEditor({
             </div>
 
             {/* Quick Preset Pickers */}
-            <div className="flex items-center space-x-2 overflow-x-auto py-1">
-              <span className="text-[#c19a6b] text-[11px] whitespace-nowrap">サンプル配置:</span>
-              {SAMPLE_PRESETS.map((preset) => (
-                <button
-                  key={preset.name}
-                  onClick={() => handleLoadPreset(preset.notes)}
-                  className="px-2.5 py-1 rounded-lg bg-[#25150d] border border-[#c19a6b]/30 hover:border-[#c19a6b] text-[#e5d3b3] hover:text-[#d4ac7d] transition-all whitespace-nowrap cursor-pointer text-[11px] flex items-center space-x-1"
-                >
-                  <Sparkles className="w-3 h-3 text-[#c19a6b]" />
-                  <span>{preset.name}</span>
-                </button>
-              ))}
-            </div>
+            {SAMPLE_PRESETS.length > 0 && (
+              <div className="flex items-center space-x-2 overflow-x-auto py-1">
+                <span className="text-[#c19a6b] text-[11px] whitespace-nowrap">サンプル配置:</span>
+                {SAMPLE_PRESETS.map((preset) => (
+                  <button
+                    key={preset.name}
+                    onClick={() => handleLoadPreset(preset.notes)}
+                    className="px-2.5 py-1 rounded-lg bg-[#25150d] border border-[#c19a6b]/30 hover:border-[#c19a6b] text-[#e5d3b3] hover:text-[#d4ac7d] transition-all whitespace-nowrap cursor-pointer text-[11px] flex items-center space-x-1"
+                  >
+                    <Sparkles className="w-3 h-3 text-[#c19a6b]" />
+                    <span>{preset.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Measure Count Controls */}
             <div className="flex items-center space-x-1.5 text-[#e5d3b3]/80">
@@ -825,10 +1013,161 @@ export default function StaffNotationEditor({
 
           <div className="flex flex-wrap items-center justify-between text-[11px] text-[#e5d3b3]/60 bg-[#170c08] p-2.5 rounded-xl border border-[#3d251a]">
             <span>💡 <strong>使い方:</strong> 五線譜上をクリックすると音符が配置され、音がすぐ鳴ります。消去モードでクリックすると音符を削除できます。</span>
-            <span>作成した楽譜は下部のオルゴールプレイヤー・パンチカードと自動同期されます</span>
+            <span>作成した楽譜は「マイ楽譜に保存」や「JSON保存」でいつでも保管できます</span>
           </div>
         </div>
       )}
+
+      {/* Toast Notification Banner */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-[#c19a6b] text-[#1c0f0a] px-4 py-2.5 rounded-xl shadow-2xl border-2 border-[#e5d3b3] font-bold text-sm flex items-center space-x-2 animate-bounce">
+          <CheckCircle2 className="w-5 h-5" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Save Score Modal */}
+      {showSaveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#23130c] border-2 border-[#c19a6b] rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5 text-[#e5d3b3]">
+            <div className="flex items-center justify-between border-b border-[#c19a6b]/30 pb-3">
+              <div className="flex items-center space-x-2">
+                <Bookmark className="w-5 h-5 text-[#c19a6b]" />
+                <h3 className="font-bold text-lg text-[#e5d3b3]">マイ楽譜に保存</h3>
+              </div>
+              <button
+                onClick={() => setShowSaveModal(false)}
+                className="text-[#e5d3b3]/60 hover:text-[#e5d3b3] p-1 rounded-lg hover:bg-[#3d251a]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <label className="block text-xs font-semibold text-[#c19a6b]">
+                曲名・タイトル
+              </label>
+              <input
+                type="text"
+                value={scoreTitle}
+                onChange={(e) => setScoreTitle(e.target.value)}
+                placeholder="例: きらきら星 アレンジ / オリジナル曲 1"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#170c08] border border-[#c19a6b]/60 focus:border-[#c19a6b] text-[#e5d3b3] placeholder-[#e5d3b3]/40 outline-none text-sm font-medium"
+                autoFocus
+              />
+              <div className="flex items-center justify-between text-xs text-[#e5d3b3]/70 bg-[#170c08] p-3 rounded-xl border border-[#3d251a]">
+                <span>音符数: <strong className="text-[#c19a6b]">{notes.length}</strong> 音</span>
+                <span>小節数: <strong className="text-[#c19a6b]">{measuresCount}</strong> 小節</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                onClick={() => setShowSaveModal(false)}
+                className="px-4 py-2 rounded-xl bg-[#170c08] border border-[#3d251a] hover:border-[#c19a6b] text-[#e5d3b3]/80 hover:text-[#e5d3b3] text-xs font-semibold cursor-pointer"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleSaveToLocalStorage}
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#c19a6b] to-[#d4ac7d] text-[#1c0f0a] text-xs font-bold shadow-lg hover:brightness-110 flex items-center space-x-1.5 cursor-pointer"
+              >
+                <Save className="w-4 h-4" />
+                <span>保存する</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Library / Saved Scores Modal */}
+      {showLibraryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#23130c] border-2 border-[#c19a6b] rounded-2xl p-6 max-w-xl w-full shadow-2xl space-y-4 text-[#e5d3b3] max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-[#c19a6b]/30 pb-3 shrink-0">
+              <div className="flex items-center space-x-2">
+                <FolderOpen className="w-5 h-5 text-[#c19a6b]" />
+                <h3 className="font-bold text-lg text-[#e5d3b3]">保存したマイ楽譜一覧</h3>
+              </div>
+              <button
+                onClick={() => setShowLibraryModal(false)}
+                className="text-[#e5d3b3]/60 hover:text-[#e5d3b3] p-1 rounded-lg hover:bg-[#3d251a]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto space-y-2.5 pr-1 flex-1 min-h-[200px]">
+              {savedScores.length === 0 ? (
+                <div className="text-center py-12 text-[#e5d3b3]/50 text-sm space-y-2 border border-dashed border-[#3d251a] rounded-xl p-6">
+                  <Bookmark className="w-10 h-10 text-[#c19a6b]/30 mx-auto" />
+                  <p>保存されたマイ楽譜はありません</p>
+                  <p className="text-xs text-[#e5d3b3]/40">
+                    五線譜に音符を入力後、「マイ楽譜に保存」ボタンを押すとここに登録されます
+                  </p>
+                </div>
+              ) : (
+                savedScores.map((item) => (
+                  <div
+                    key={item.id}
+                    onClick={() => handleLoadSavedScore(item)}
+                    className="p-3.5 rounded-xl bg-[#170c08] border border-[#3d251a] hover:border-[#c19a6b] transition-all flex items-center justify-between gap-3 group cursor-pointer"
+                  >
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-bold text-sm text-[#e5d3b3] group-hover:text-[#d4ac7d] truncate">
+                          {item.title}
+                        </span>
+                        <span className="text-[10px] px-2 py-0.5 bg-[#c19a6b]/20 border border-[#c19a6b]/40 text-[#c19a6b] rounded-full shrink-0 font-semibold">
+                          {item.notesCount} 音
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-[#e5d3b3]/50 flex items-center space-x-3">
+                        <span>保存日時: {item.savedAt}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2 shrink-0">
+                      <button
+                        onClick={() => handleLoadSavedScore(item)}
+                        className="px-3 py-1.5 rounded-lg bg-[#c19a6b] text-[#1c0f0a] font-bold text-xs hover:brightness-110 flex items-center space-x-1"
+                        title="この楽譜を開く"
+                      >
+                        <FolderOpen className="w-3.5 h-3.5" />
+                        <span>開く</span>
+                      </button>
+                      <button
+                        onClick={(e) => handleDeleteSavedScore(item.id, e)}
+                        className="p-1.5 rounded-lg text-[#e5d3b3]/50 hover:text-[#e55353] hover:bg-[#3d251a] transition-all"
+                        title="この楽譜を削除"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-[#c19a6b]/30 flex items-center justify-between shrink-0 text-xs">
+              <span className="text-[#e5d3b3]/60">全 {savedScores.length} 曲の楽譜データ</span>
+              <button
+                onClick={() => setShowLibraryModal(false)}
+                className="px-4 py-2 rounded-xl bg-[#170c08] border border-[#3d251a] hover:border-[#c19a6b] text-[#e5d3b3] font-semibold"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Humming Recorder Modal */}
+      <HummingRecorderModal
+        isOpen={showHummingModal}
+        onClose={() => setShowHummingModal(false)}
+        onLoadNotes={handleLoadFromHumming}
+      />
     </div>
   );
 }

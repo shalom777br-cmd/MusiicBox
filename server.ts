@@ -228,6 +228,124 @@ Return ONLY JSON matching this structure:
     }
   });
 
+  // API: Parse user's recorded humming audio using Gemini Audio Understanding
+  app.post("/api/parse-humming", async (req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    try {
+      const { audioData, mimeType = "audio/webm" } = req.body;
+
+      if (!audioData) {
+        return res.status(400).json({ success: false, error: "音声データが見つかりません" });
+      }
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({
+          success: false,
+          error: "GEMINI_API_KEYが設定されていません。AI StudioのSettingsからAPIキーを設定してください。",
+        });
+      }
+
+      console.log("Analyzing humming audio recording...");
+
+      const prompt = `
+You are an expert audio transcription AI and musicologist specialized in converting sung or hummed melodies into clear, beautiful music box note arrangements.
+Listen carefully to the recorded audio of the user humming or singing a melody.
+
+YOUR GOALS:
+1. PITCH DETECTION: Identify the sequence of pitches sung/hummed by the user (e.g. C4, D4, E4, F4, G4, A4, B4, C5).
+2. RHYTHM & TIMING: Detect the tempo (BPM) and rhythmic spacing. Assign "startTime" in exact beat numbers (0.0, 0.5, 1.0, 1.5, 2.0, etc.) and "duration" (usually 0.5 or 1.0 beats).
+3. RANGE ADAPTATION FOR MUSIC BOX: Transpose the pitches if needed to fit comfortably within a clear music box range (mostly middle octave C4 to C6, e.g., C4 = 60, G4 = 67, C5 = 72).
+4. MELODY CLEANUP: Smooth out unstable pitches, unintended voice cracks, or breathing pauses into a continuous, pleasant melody.
+5. METADATA: Provide an appropriate title for the hummed melody (e.g., "鼻歌のオルゴールメロディ", or guess the famous song title if the humming matches a known song), estimated BPM, key signature, and a friendly Japanese summary ("summary") describing the transcribed melody.
+
+Return ONLY JSON matching this exact structure:
+{
+  "title": "鼻歌のオリジナルメロディ",
+  "bpm": 80,
+  "keySignature": "C Major",
+  "summary": "ユーザー様の鼻歌からメロディを正確に聞き取り、綺麗なオルゴール用音符データに変換しました！",
+  "notes": [
+    {
+      "pitch": "C4",
+      "midiNumber": 60,
+      "startTime": 0.0,
+      "duration": 1.0,
+      "velocity": 90,
+      "isMelody": true
+    }
+  ]
+}
+`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.6-flash",
+        contents: {
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                mimeType,
+                data: audioData,
+              },
+            },
+          ],
+        },
+        config: {
+          maxOutputTokens: 16384,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              bpm: { type: Type.NUMBER },
+              keySignature: { type: Type.STRING },
+              summary: { type: Type.STRING },
+              notes: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    pitch: { type: Type.STRING },
+                    midiNumber: { type: Type.INTEGER },
+                    startTime: { type: Type.NUMBER },
+                    duration: { type: Type.NUMBER },
+                    velocity: { type: Type.INTEGER },
+                    isMelody: { type: Type.BOOLEAN },
+                  },
+                  required: ["pitch", "midiNumber", "startTime", "duration"],
+                },
+              },
+            },
+            required: ["title", "notes", "summary"],
+          },
+        },
+      });
+
+      const parsedData = safeParseJson(response.text);
+      if (!parsedData) {
+        return res.status(500).json({
+          success: false,
+          error: "Geminiからの音声解析結果を読み込めませんでした。",
+        });
+      }
+
+      return res.json({ success: true, data: parsedData });
+    } catch (error: any) {
+      console.error("Error in /api/parse-humming:", error);
+      let errorMessage = "鼻歌の解析中にエラーが発生しました";
+      if (error?.status === 503 || error?.message?.includes("503") || error?.message?.includes("UNAVAILABLE")) {
+        errorMessage = "現在AIサーバーの負荷が高まっています。少し時間をおいて再度お試しください。";
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      return res.status(500).json({
+        success: false,
+        error: errorMessage,
+      });
+    }
+  });
+
   // API 2: Optimize note arrangement specifically for music box limitations using Gemini AI
   app.post("/api/optimize-musicbox", async (req, res) => {
     res.setHeader("Content-Type", "application/json");

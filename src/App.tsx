@@ -17,20 +17,18 @@ import { MusicBoxAudioEngine } from './utils/audioEngine';
 import { transformNotesForMusicBox } from './utils/musicParsers';
 
 export default function App() {
-  // Default Song: Canon in D
-  const defaultSample = SAMPLE_SONGS[0];
+  const [rawNotes, setRawNotes] = useState<MusicNote[]>([]);
 
-  const [rawNotes, setRawNotes] = useState<MusicNote[]>(defaultSample.notes);
   const [meta, setMeta] = useState<ScoreMeta>({
-    title: defaultSample.titleJa,
-    composer: defaultSample.composer,
-    timeSignature: defaultSample.timeSignature,
-    originalBpm: defaultSample.bpm,
+    title: 'マイ楽譜（無題）',
+    composer: 'オリジナル',
+    timeSignature: '4/4',
+    originalBpm: 80,
     keySignature: 'C Major',
-    summary: defaultSample.description,
+    summary: '五線譜直接入力、画像/PDF/MIDIの読み込み、または鼻歌（Gemini AI）から作成できます。',
   });
 
-  const [activeSongId, setActiveSongId] = useState<string | undefined>(defaultSample.id);
+  const [activeSongId, setActiveSongId] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
   const [isAiOptimizing, setIsAiOptimizing] = useState(false);
   const [isCopyrightModalOpen, setIsCopyrightModalOpen] = useState(false);
@@ -39,7 +37,7 @@ export default function App() {
   // Music Box Settings
   const [settings, setSettings] = useState<MusicBoxSettings>({
     timbre: 'wooden',
-    tempoBpm: defaultSample.bpm,
+    tempoBpm: 80,
     keyShift: 0,
     combCount: 50,
     removeChords: false,
