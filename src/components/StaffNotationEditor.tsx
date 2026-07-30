@@ -160,7 +160,7 @@ export default function StaffNotationEditor({
   // Visual layout constants
   const stepHeight = 7; // pixels per diatonic step
   const lineSpacing = 14; // pixels between staff lines (2 steps)
-  const beatWidth = 36; // pixels per beat (quarter note width)
+  const beatWidth = 64; // pixels per beat (quarter note width)
   const staffLeftMargin = 80; // space for Treble Clef and time signature
   const staffPaddingTop = 70; // padding top for ledger lines above F5/C6
   const staffHeight = 180; // total staff height
