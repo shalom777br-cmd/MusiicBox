@@ -304,8 +304,22 @@ export default function StaffNotationEditor({
   };
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const playbackTimerRef = useRef<number | null>(null);
+
+  // Drag state for notes
+  const [draggingNoteId, setDraggingNoteId] = useState<string | null>(null);
+  const dragStartRef = useRef<{
+    noteId: string;
+    startX: number;
+    startY: number;
+    initialBeat: number;
+    initialMidi: number;
+    initialStep: number;
+    hasMoved: boolean;
+    lastAudioStep?: number;
+  } | null>(null);
 
   // Load saved scores from localStorage on mount
   useEffect(() => {
@@ -355,8 +369,117 @@ export default function StaffNotationEditor({
     };
   }, []);
 
-  // Handle clicking on staff canvas to place or remove a note
+  // Pointer down handler on a note head to initiate drag
+  const handleNotePointerDown = (e: React.PointerEvent<SVGGElement>, note: MusicNote) => {
+    e.stopPropagation();
+
+    if (editorMode === 'delete') {
+      const updated = notes.filter((n) => n.id !== note.id);
+      onChangeNotes(updated);
+      showToast(`音符（${note.pitch}）を削除しました`);
+      return;
+    }
+
+    const { step } = midiToStaffInfo(note.midiNumber, keySignature);
+
+    dragStartRef.current = {
+      noteId: note.id,
+      startX: e.clientX,
+      startY: e.clientY,
+      initialBeat: note.startTime,
+      initialMidi: note.midiNumber,
+      initialStep: step,
+      hasMoved: false,
+      lastAudioStep: step,
+    };
+
+    setDraggingNoteId(note.id);
+    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+  };
+
+  // Pointer move handler on staff canvas (handles both hover and active dragging)
+  const handleStaffPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!dragStartRef.current) {
+      handleMouseMove(e);
+      return;
+    }
+
+    const drag = dragStartRef.current;
+    const deltaX = Math.abs(e.clientX - drag.startX);
+    const deltaY = Math.abs(e.clientY - drag.startY);
+
+    if (!drag.hasMoved && (deltaX > 3 || deltaY > 3)) {
+      drag.hasMoved = true;
+    }
+
+    if (!drag.hasMoved) return;
+
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    const svgRect = svg.getBoundingClientRect();
+    const mouseX = e.clientX - svgRect.left;
+    const mouseY = e.clientY - svgRect.top;
+
+    // Calculate nearest beat
+    const rawBeat = (mouseX - staffLeftMargin) / beatWidth;
+    const snappedBeat = Math.max(0, Math.round(rawBeat * 2) / 2);
+
+    // Calculate diatonic step
+    const rawStep = 2 + (yBaseE4 - mouseY) / stepHeight;
+    const snappedStep = Math.min(16, Math.max(-2, Math.round(rawStep)));
+
+    const { midi, pitch } = staffStepToPitch(snappedStep, selectedAccidental, keySignature);
+
+    // Play pitch sound on step change during drag
+    if (audioEngine && drag.lastAudioStep !== snappedStep) {
+      drag.lastAudioStep = snappedStep;
+      audioEngine.unlockAudio();
+      audioEngine.playSingleNote(midi, 0.2);
+    }
+
+    // Update note position & pitch
+    const updated = notes.map((n) => {
+      if (n.id === drag.noteId) {
+        return {
+          ...n,
+          startTime: snappedBeat,
+          midiNumber: midi,
+          pitch: pitch,
+        };
+      }
+      return n;
+    });
+
+    onChangeNotes(updated);
+  };
+
+  // Pointer release handler
+  const handleStaffPointerUp = (e: React.PointerEvent) => {
+    if (dragStartRef.current) {
+      const drag = dragStartRef.current;
+      if (drag.hasMoved) {
+        const draggedNote = notes.find((n) => n.id === drag.noteId);
+        if (draggedNote) {
+          showToast(`音符の位置を変更しました: ${draggedNote.pitch} (${draggedNote.startTime}拍目)`);
+        }
+      } else {
+        // Just a click on the note head -> preview sound
+        const clickedNote = notes.find((n) => n.id === drag.noteId);
+        if (clickedNote && audioEngine) {
+          audioEngine.unlockAudio();
+          audioEngine.playSingleNote(clickedNote.midiNumber, clickedNote.duration);
+        }
+      }
+    }
+    dragStartRef.current = null;
+    setDraggingNoteId(null);
+  };
+
+  // Handle clicking on empty staff canvas to place a note
   const handleStaffClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (dragStartRef.current?.hasMoved) return; // Prevent placing a note right after finishing a drag
+
     const svgRect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - svgRect.left;
     const clickY = e.clientY - svgRect.top;
@@ -369,14 +492,12 @@ export default function StaffNotationEditor({
     const snappedBeat = Math.max(0, Math.round(rawBeat * 2) / 2);
 
     // Calculate diatonic step from Y coordinate
-    // y = yBaseE4 - (step - 2) * stepHeight => step = 2 + (yBaseE4 - y) / stepHeight
     const rawStep = 2 + (yBaseE4 - clickY) / stepHeight;
-    const snappedStep = Math.min(16, Math.max(-2, Math.round(rawStep))); // constrain between A3 and D6
+    const snappedStep = Math.min(16, Math.max(-2, Math.round(rawStep)));
 
-    const { midi, pitch, japaneseName } = staffStepToPitch(snappedStep, selectedAccidental, keySignature);
+    const { midi, pitch } = staffStepToPitch(snappedStep, selectedAccidental, keySignature);
 
     if (editorMode === 'delete') {
-      // Find note at or near beat and step to delete
       const updated = notes.filter((n) => {
         const info = midiToStaffInfo(n.midiNumber, keySignature);
         const sameStep = Math.abs(info.step - snappedStep) <= 0.5;
@@ -385,14 +506,11 @@ export default function StaffNotationEditor({
       });
       onChangeNotes(updated);
     } else {
-      // Add or Update Note
-      // Play sound immediately on click for acoustic feedback
       if (audioEngine) {
         audioEngine.unlockAudio();
         audioEngine.playSingleNote(midi, selectedDuration);
       }
 
-      // Check if a note already exists at this exact beat & step
       const existingIndex = notes.findIndex((n) => {
         const info = midiToStaffInfo(n.midiNumber, keySignature);
         return Math.abs(info.step - snappedStep) <= 0.5 && Math.abs(n.startTime - snappedBeat) < 0.4;
@@ -407,12 +525,10 @@ export default function StaffNotationEditor({
       };
 
       if (existingIndex >= 0) {
-        // Toggle/replace
         const updated = [...notes];
         updated[existingIndex] = newNote;
         onChangeNotes(updated);
       } else {
-        // Append and sort by startTime
         const updated = [...notes, newNote].sort((a, b) => a.startTime - b.startTime);
         onChangeNotes(updated);
       }
@@ -1049,7 +1165,9 @@ export default function StaffNotationEditor({
                   カーソル位置: <span className="text-[#d4ac7d]">{hoverPitchInfo.japaneseName}</span> ({hoverPitchInfo.pitch}) - 第{Math.floor((hoverState?.beat || 0) / 4) + 1}小節 {((hoverState?.beat || 0) % 4) + 1}拍目
                 </span>
               ) : (
-                <span className="text-[#e5d3b3]/60">五線譜の上にマウス・指を置くと音名が表示され、クリックで音符を配置できます</span>
+                <span className="text-[#e5d3b3]/80">
+                  クリックで音符を配置・選択 ｜ 💡 <strong>音符をドラッグ</strong>して音高や拍を自由に変更できます
+                </span>
               )}
             </div>
             <div className="text-[11px] text-[#e5d3b3]/60">
@@ -1067,12 +1185,17 @@ export default function StaffNotationEditor({
             }}
           >
             <svg
+              ref={svgRef}
               width={staffLeftMargin + totalBeats * beatWidth + 60}
               height={staffHeight}
               onClick={handleStaffClick}
-              onMouseMove={handleMouseMove}
+              onPointerMove={handleStaffPointerMove}
+              onPointerUp={handleStaffPointerUp}
+              onPointerCancel={handleStaffPointerUp}
               onMouseLeave={handleMouseLeave}
-              className={`cursor-${editorMode === 'delete' ? 'crosshair' : 'pointer'} block`}
+              className={`cursor-${
+                editorMode === 'delete' ? 'crosshair' : draggingNoteId ? 'grabbing' : 'pointer'
+              } block touch-none`}
             >
               {/* Background Margins & Clef Area */}
               <rect
@@ -1281,11 +1404,20 @@ export default function StaffNotationEditor({
                   }
                 }
 
+                const isDragging = draggingNoteId === note.id;
+
                 return (
                   <g
                     key={note.id}
-                    className="transition-transform hover:scale-110 cursor-pointer"
-                    title={`${note.pitch} (${note.startTime}拍目)`}
+                    onPointerDown={(e) => handleNotePointerDown(e, note)}
+                    className={`transition-all ${
+                      isDragging
+                        ? 'cursor-grabbing opacity-90 scale-110 drop-shadow-md'
+                        : editorMode === 'delete'
+                        ? 'cursor-crosshair hover:scale-110 hover:opacity-70'
+                        : 'cursor-grab hover:scale-110'
+                    }`}
+                    title={`${note.pitch} (${note.startTime}拍目) - ドラッグで音高・拍を調整`}
                   >
                     {/* Render Ledger Lines if applicable */}
                     {ledgerLines.map((ly, idx) => (
