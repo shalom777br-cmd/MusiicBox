@@ -23,6 +23,10 @@ import {
   X,
   Mic,
   RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react';
 import { MusicNote, MusicBoxSettings, ScoreMeta } from '../types';
 import { MusicBoxAudioEngine } from '../utils/audioEngine';
@@ -321,7 +325,14 @@ export default function StaffNotationEditor({
     lastAudioStep?: number;
   } | null>(null);
 
-  // Load saved scores from localStorage on mount
+  // Canvas drag/pan state
+  const canvasPanRef = useRef<{
+    startX: number;
+    startY: number;
+    startScrollLeft: number;
+    hasPanned: boolean;
+  } | null>(null);
+  const justPannedRef = useRef<boolean>(false);
   useEffect(() => {
     try {
       const stored = localStorage.getItem('musicbox_saved_scores');
@@ -397,61 +408,111 @@ export default function StaffNotationEditor({
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
   };
 
-  // Pointer move handler on staff canvas (handles both hover and active dragging)
+  // Pointer down handler on SVG background to initiate canvas pan
+  const handleCanvasPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (containerRef.current) {
+      canvasPanRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        startScrollLeft: containerRef.current.scrollLeft,
+        hasPanned: false,
+      };
+      (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    }
+  };
+
+  // Convert vertical mouse wheel into horizontal score scroll
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (containerRef.current) {
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        containerRef.current.scrollLeft += e.deltaY;
+      }
+    }
+  };
+
+  // Pointer move handler on staff canvas (handles hover, note dragging, and canvas panning)
   const handleStaffPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (!dragStartRef.current) {
-      handleMouseMove(e);
+    // Case A: Note dragging
+    if (dragStartRef.current) {
+      const drag = dragStartRef.current;
+      const deltaX = Math.abs(e.clientX - drag.startX);
+      const deltaY = Math.abs(e.clientY - drag.startY);
+
+      if (!drag.hasMoved && (deltaX > 3 || deltaY > 3)) {
+        drag.hasMoved = true;
+      }
+
+      if (!drag.hasMoved) return;
+
+      // Auto-scroll container if note is dragged near left or right edge
+      if (containerRef.current) {
+        const cRect = containerRef.current.getBoundingClientRect();
+        if (e.clientX < cRect.left + 60) {
+          containerRef.current.scrollLeft -= 14;
+        } else if (e.clientX > cRect.right - 60) {
+          containerRef.current.scrollLeft += 14;
+        }
+      }
+
+      const svg = svgRef.current;
+      if (!svg) return;
+
+      const svgRect = svg.getBoundingClientRect();
+      const mouseX = e.clientX - svgRect.left;
+      const mouseY = e.clientY - svgRect.top;
+
+      // Calculate nearest beat
+      const rawBeat = (mouseX - staffLeftMargin) / beatWidth;
+      const snappedBeat = Math.max(0, Math.round(rawBeat * 2) / 2);
+
+      // Calculate diatonic step
+      const rawStep = 2 + (yBaseE4 - mouseY) / stepHeight;
+      const snappedStep = Math.min(16, Math.max(-2, Math.round(rawStep)));
+
+      const { midi, pitch } = staffStepToPitch(snappedStep, selectedAccidental, keySignature);
+
+      // Play pitch sound on step change during drag
+      if (audioEngine && drag.lastAudioStep !== snappedStep) {
+        drag.lastAudioStep = snappedStep;
+        audioEngine.unlockAudio();
+        audioEngine.playSingleNote(midi, 0.2);
+      }
+
+      // Update note position & pitch
+      const updated = notes.map((n) => {
+        if (n.id === drag.noteId) {
+          return {
+            ...n,
+            startTime: snappedBeat,
+            midiNumber: midi,
+            pitch: pitch,
+          };
+        }
+        return n;
+      });
+
+      onChangeNotes(updated);
       return;
     }
 
-    const drag = dragStartRef.current;
-    const deltaX = Math.abs(e.clientX - drag.startX);
-    const deltaY = Math.abs(e.clientY - drag.startY);
+    // Case B: Canvas Pan/Scroll dragging
+    if (canvasPanRef.current) {
+      const pan = canvasPanRef.current;
+      const dx = e.clientX - pan.startX;
+      const dy = e.clientY - pan.startY;
 
-    if (!drag.hasMoved && (deltaX > 3 || deltaY > 3)) {
-      drag.hasMoved = true;
-    }
-
-    if (!drag.hasMoved) return;
-
-    const svg = svgRef.current;
-    if (!svg) return;
-
-    const svgRect = svg.getBoundingClientRect();
-    const mouseX = e.clientX - svgRect.left;
-    const mouseY = e.clientY - svgRect.top;
-
-    // Calculate nearest beat
-    const rawBeat = (mouseX - staffLeftMargin) / beatWidth;
-    const snappedBeat = Math.max(0, Math.round(rawBeat * 2) / 2);
-
-    // Calculate diatonic step
-    const rawStep = 2 + (yBaseE4 - mouseY) / stepHeight;
-    const snappedStep = Math.min(16, Math.max(-2, Math.round(rawStep)));
-
-    const { midi, pitch } = staffStepToPitch(snappedStep, selectedAccidental, keySignature);
-
-    // Play pitch sound on step change during drag
-    if (audioEngine && drag.lastAudioStep !== snappedStep) {
-      drag.lastAudioStep = snappedStep;
-      audioEngine.unlockAudio();
-      audioEngine.playSingleNote(midi, 0.2);
-    }
-
-    // Update note position & pitch
-    const updated = notes.map((n) => {
-      if (n.id === drag.noteId) {
-        return {
-          ...n,
-          startTime: snappedBeat,
-          midiNumber: midi,
-          pitch: pitch,
-        };
+      if (!pan.hasPanned && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
+        pan.hasPanned = true;
       }
-      return n;
-    });
 
-    onChangeNotes(updated);
+      if (pan.hasPanned && containerRef.current) {
+        containerRef.current.scrollLeft = pan.startScrollLeft - dx;
+        return;
+      }
+    }
+
+    // Default: Hover position updates
+    handleMouseMove(e);
   };
 
   // Pointer release handler
@@ -472,13 +533,22 @@ export default function StaffNotationEditor({
         }
       }
     }
+
+    if (canvasPanRef.current?.hasPanned) {
+      justPannedRef.current = true;
+      setTimeout(() => {
+        justPannedRef.current = false;
+      }, 60);
+    }
+
     dragStartRef.current = null;
+    canvasPanRef.current = null;
     setDraggingNoteId(null);
   };
 
   // Handle clicking on empty staff canvas to place a note
   const handleStaffClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (dragStartRef.current?.hasMoved) return; // Prevent placing a note right after finishing a drag
+    if (dragStartRef.current?.hasMoved || justPannedRef.current) return; // Prevent placing note after drag/pan
 
     const svgRect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - svgRect.left;
@@ -1156,6 +1226,59 @@ export default function StaffNotationEditor({
             </div>
           </div>
 
+          {/* Staff Horizontal Scroll Controls & Navigation Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 bg-[#25150d]/80 rounded-lg border border-[#3d251a] text-xs text-[#e5d3b3]/90 shadow-sm">
+            <div className="flex items-center space-x-1.5 flex-wrap">
+              <span className="text-[#c19a6b] font-semibold flex items-center space-x-1 mr-1">
+                <span>楽譜移動 (左右スクロール):</span>
+              </span>
+              <button
+                onClick={() => containerRef.current?.scrollTo({ left: 0, behavior: 'smooth' })}
+                className="px-2.5 py-1 rounded bg-[#3d251a] hover:bg-[#4d3022] hover:text-[#e5d3b3] border border-[#3d251a] hover:border-[#c19a6b] text-[#e5d3b3]/80 flex items-center space-x-1 transition-all cursor-pointer font-medium active:scale-95"
+                title="楽譜の先頭へ移動"
+              >
+                <ChevronsLeft className="w-3.5 h-3.5" />
+                <span>先頭へ</span>
+              </button>
+              <button
+                onClick={() =>
+                  containerRef.current?.scrollBy({ left: -4 * beatWidth, behavior: 'smooth' })
+                }
+                className="px-2.5 py-1 rounded bg-[#3d251a] hover:bg-[#4d3022] hover:text-[#e5d3b3] border border-[#3d251a] hover:border-[#c19a6b] text-[#e5d3b3]/80 flex items-center space-x-1 transition-all cursor-pointer font-medium active:scale-95"
+                title="左に1小節分移動"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                <span>1小節戻る</span>
+              </button>
+              <button
+                onClick={() =>
+                  containerRef.current?.scrollBy({ left: 4 * beatWidth, behavior: 'smooth' })
+                }
+                className="px-2.5 py-1 rounded bg-[#3d251a] hover:bg-[#4d3022] hover:text-[#e5d3b3] border border-[#3d251a] hover:border-[#c19a6b] text-[#e5d3b3]/80 flex items-center space-x-1 transition-all cursor-pointer font-medium active:scale-95"
+                title="右に1小節分移動"
+              >
+                <span>1小節進む</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() =>
+                  containerRef.current?.scrollTo({
+                    left: containerRef.current.scrollWidth,
+                    behavior: 'smooth',
+                  })
+                }
+                className="px-2.5 py-1 rounded bg-[#3d251a] hover:bg-[#4d3022] hover:text-[#e5d3b3] border border-[#3d251a] hover:border-[#c19a6b] text-[#e5d3b3]/80 flex items-center space-x-1 transition-all cursor-pointer font-medium active:scale-95"
+                title="楽譜の末尾へ移動"
+              >
+                <span>末尾へ</span>
+                <ChevronsRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="hidden md:flex items-center space-x-2 text-[11px] text-[#e5d3b3]/70">
+              <span>💡 マウスドラッグ / ホイール / ボタンで楽譜を左右自由に移動できます</span>
+            </div>
+          </div>
+
           {/* Hover Pitch Information Badge */}
           <div className="h-6 flex items-center justify-between text-xs px-2 text-[#c19a6b]">
             <div className="flex items-center space-x-2">
@@ -1166,7 +1289,7 @@ export default function StaffNotationEditor({
                 </span>
               ) : (
                 <span className="text-[#e5d3b3]/80">
-                  クリックで音符を配置・選択 ｜ 💡 <strong>音符をドラッグ</strong>して音高や拍を自由に変更できます
+                  クリックで音符を配置 ｜ 💡 背景ドラッグやボタンで左右移動 ｜ 音符ドラッグで移動・調整
                 </span>
               )}
             </div>
@@ -1178,7 +1301,8 @@ export default function StaffNotationEditor({
           {/* Staff Sheet Canvas SVG Area */}
           <div
             ref={containerRef}
-            className="w-full overflow-x-auto bg-[#faf5eb] rounded-xl border-2 border-[#c19a6b] shadow-inner select-none relative"
+            onWheel={handleWheel}
+            className="w-full overflow-x-auto bg-[#faf5eb] rounded-xl border-2 border-[#c19a6b] shadow-inner select-none relative scroll-smooth"
             style={{
               backgroundImage: 'radial-gradient(#e2d5c3 1px, transparent 1px)',
               backgroundSize: '16px 16px',
@@ -1189,12 +1313,13 @@ export default function StaffNotationEditor({
               width={staffLeftMargin + totalBeats * beatWidth + 60}
               height={staffHeight}
               onClick={handleStaffClick}
+              onPointerDown={handleCanvasPointerDown}
               onPointerMove={handleStaffPointerMove}
               onPointerUp={handleStaffPointerUp}
               onPointerCancel={handleStaffPointerUp}
               onMouseLeave={handleMouseLeave}
               className={`cursor-${
-                editorMode === 'delete' ? 'crosshair' : draggingNoteId ? 'grabbing' : 'pointer'
+                editorMode === 'delete' ? 'crosshair' : draggingNoteId ? 'grabbing' : 'grab'
               } block touch-none`}
             >
               {/* Background Margins & Clef Area */}
@@ -1321,7 +1446,7 @@ export default function StaffNotationEditor({
                   <g key={`beat_marker_${beatIndex}`}>
                     {/* Vertical Measure Line */}
                     {isMeasureBar && (
-                      <>
+                      <g key={`measure_header_${beatIndex}`}>
                         <line
                           x1={x}
                           y1={getStepY(10)}
@@ -1341,7 +1466,7 @@ export default function StaffNotationEditor({
                         >
                           {beatIndex / beatsPerMeasure + 1}
                         </text>
-                      </>
+                      </g>
                     )}
 
                     {/* Subtle beat grid tick */}
@@ -1375,7 +1500,7 @@ export default function StaffNotationEditor({
               )}
 
               {/* Render Existing Placed Notes */}
-              {notes.map((note) => {
+              {notes.map((note, noteIndex) => {
                 const { step, accidental } = midiToStaffInfo(note.midiNumber, keySignature);
                 const keyAccidental = getKeySignatureAccidentalForStep(step, keySignature);
 
@@ -1405,10 +1530,11 @@ export default function StaffNotationEditor({
                 }
 
                 const isDragging = draggingNoteId === note.id;
+                const noteKey = note.id || `note_${noteIndex}_${note.startTime}_${note.midiNumber}`;
 
                 return (
                   <g
-                    key={note.id}
+                    key={noteKey}
                     onPointerDown={(e) => handleNotePointerDown(e, note)}
                     className={`transition-all ${
                       isDragging
@@ -1422,7 +1548,7 @@ export default function StaffNotationEditor({
                     {/* Render Ledger Lines if applicable */}
                     {ledgerLines.map((ly, idx) => (
                       <line
-                        key={`ledger_${note.id}_${idx}`}
+                        key={`ledger_${noteKey}_${idx}`}
                         x1={x - 10}
                         y1={ly}
                         x2={x + 10}
@@ -1446,23 +1572,23 @@ export default function StaffNotationEditor({
                       </text>
                     )}
 
-                    {/* Notehead rendering (2分音符 & 全音符 matching standard musical notation) */}
+                    {/* Notehead rendering */}
                     {(() => {
                       const hasStem = note.duration < 4;
                       const hasFlag = note.duration <= 0.5;
                       const hasDot = note.duration === 1.5 || note.duration === 3 || note.duration === 6;
 
                       return (
-                        <>
+                        <g key={`note_body_${noteKey}`}>
                           {/* Notehead */}
                           {note.duration >= 4 ? (
-                            /* 全音符 (Whole Note - Wide outer ellipse + tilted counter hole) */
+                            /* 全音符 (Whole Note) */
                             <g transform={`translate(${x}, ${y})`}>
                               <ellipse cx="0" cy="0" rx="8.5" ry="5.5" fill="#2d1b14" />
                               <ellipse cx="0" cy="0" rx="5.0" ry="2.3" fill="#f7f3e9" transform="rotate(-40)" />
                             </g>
                           ) : note.duration >= 2 ? (
-                            /* 2分音符 (Half Note - Tilted hollow ellipse with thick border) */
+                            /* 2分音符 (Half Note) */
                             <ellipse
                               cx={x}
                               cy={y}
@@ -1474,7 +1600,7 @@ export default function StaffNotationEditor({
                               transform={`rotate(-25 ${x} ${y})`}
                             />
                           ) : (
-                            /* 4分音符 / 8分音符 (Quarter / 8th Note - Filled ellipse) */
+                            /* 4分音符 / 8分音符 (Quarter / 8th Note) */
                             <ellipse
                               cx={x}
                               cy={y}
@@ -1485,7 +1611,7 @@ export default function StaffNotationEditor({
                             />
                           )}
 
-                          {/* Dot for dotted notes (1.5, 3, 6 beats) */}
+                          {/* Dot for dotted notes */}
                           {hasDot && (
                             <circle
                               cx={x + (note.duration >= 4 ? 11 : 9)}
@@ -1495,7 +1621,7 @@ export default function StaffNotationEditor({
                             />
                           )}
 
-                          {/* Note Stem (omitted for whole notes >= 4 beats) */}
+                          {/* Note Stem */}
                           {hasStem && (
                             <line
                               x1={isStemDown ? x - 6 : x + 6}
@@ -1520,7 +1646,7 @@ export default function StaffNotationEditor({
                               strokeWidth="2"
                             />
                           )}
-                        </>
+                        </g>
                       );
                     })()}
                   </g>
@@ -1534,13 +1660,12 @@ export default function StaffNotationEditor({
                     const x = getBeatX(hoverState.beat);
                     const y = getStepY(hoverState.step);
                     const isStemDown = hoverState.step >= 6;
-                    const isHoverHollow = selectedDuration >= 2;
                     const hasHoverStem = selectedDuration < 4;
                     const hasHoverFlag = selectedDuration <= 0.5;
                     const hasHoverDot = selectedDuration === 1.5 || selectedDuration === 3;
 
                     return (
-                      <>
+                      <g key="hover_ghost_shapes">
                         {selectedDuration >= 4 ? (
                           /* 全音符 (Whole Note Ghost) */
                           <g transform={`translate(${x}, ${y})`}>
@@ -1600,7 +1725,7 @@ export default function StaffNotationEditor({
                             strokeWidth="2"
                           />
                         )}
-                      </>
+                      </g>
                     );
                   })()}
                 </g>
