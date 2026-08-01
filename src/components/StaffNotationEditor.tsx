@@ -27,6 +27,12 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Copy,
+  ClipboardPaste,
+  Scissors,
+  CopyPlus,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 import { MusicNote, MusicBoxSettings, ScoreMeta } from '../types';
 import { MusicBoxAudioEngine } from '../utils/audioEngine';
@@ -312,6 +318,10 @@ export default function StaffNotationEditor({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const playbackTimerRef = useRef<number | null>(null);
 
+  // Note selection and clipboard states
+  const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
+  const [clipboardNotes, setClipboardNotes] = useState<MusicNote[]>([]);
+
   // Drag state for notes
   const [draggingNoteId, setDraggingNoteId] = useState<string | null>(null);
   const dragStartRef = useRef<{
@@ -321,6 +331,7 @@ export default function StaffNotationEditor({
     initialBeat: number;
     initialMidi: number;
     initialStep: number;
+    selectedInitialStates?: { id: string; initialBeat: number; initialStep: number; initialMidi: number }[];
     hasMoved: boolean;
     lastAudioStep?: number;
   } | null>(null);
@@ -380,7 +391,194 @@ export default function StaffNotationEditor({
     };
   }, []);
 
-  // Pointer down handler on a note head to initiate drag
+  // Selection helpers
+  const handleSelectNote = (noteId: string, isShift: boolean) => {
+    if (isShift) {
+      setSelectedNoteIds((prev) =>
+        prev.includes(noteId) ? prev.filter((id) => id !== noteId) : [...prev, noteId]
+      );
+    } else {
+      setSelectedNoteIds([noteId]);
+    }
+  };
+
+  const handleSelectAll = () => {
+    if (notes.length === 0) {
+      showToast('選択できる音符がありません。');
+      return;
+    }
+    setSelectedNoteIds(notes.map((n) => n.id));
+    showToast(`全 ${notes.length} 個の音符を選択しました`);
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedNoteIds([]);
+  };
+
+  // Clipboard operations (Copy, Cut, Paste, Duplicate)
+  const handleCopy = () => {
+    const targetNotes =
+      selectedNoteIds.length > 0
+        ? notes.filter((n) => selectedNoteIds.includes(n.id))
+        : notes;
+
+    if (targetNotes.length === 0) {
+      showToast('コピーする音符がありません。');
+      return;
+    }
+
+    setClipboardNotes(targetNotes);
+    showToast(`音符 ${targetNotes.length} 個をコピーしました (Ctrl+V で貼り付け)`);
+  };
+
+  const handleCut = () => {
+    const targetNotes =
+      selectedNoteIds.length > 0
+        ? notes.filter((n) => selectedNoteIds.includes(n.id))
+        : notes;
+
+    if (targetNotes.length === 0) {
+      showToast('切り取る音符がありません。');
+      return;
+    }
+
+    const cutIds = new Set(targetNotes.map((n) => n.id));
+    setClipboardNotes(targetNotes);
+    onChangeNotes(notes.filter((n) => !cutIds.has(n.id)));
+    setSelectedNoteIds([]);
+    showToast(`音符 ${targetNotes.length} 個を切り取りました`);
+  };
+
+  const handlePaste = () => {
+    if (clipboardNotes.length === 0) {
+      showToast('クリップボードが空です。先に音符をコピーまたは切り取ってください。');
+      return;
+    }
+
+    let targetBeat = 0;
+    if (hoverState) {
+      targetBeat = hoverState.beat;
+    } else if (selectedNoteIds.length > 0) {
+      const selected = notes.filter((n) => selectedNoteIds.includes(n.id));
+      const maxEnd = Math.max(...selected.map((n) => n.startTime + n.duration));
+      targetBeat = maxEnd;
+    } else if (notes.length > 0) {
+      const maxEnd = Math.max(...notes.map((n) => n.startTime + n.duration));
+      targetBeat = maxEnd;
+    }
+
+    const minClipStart = Math.min(...clipboardNotes.map((n) => n.startTime));
+
+    const pastedNotes: MusicNote[] = clipboardNotes.map((n, idx) => {
+      const offset = n.startTime - minClipStart;
+      const newStart = Math.max(0, targetBeat + offset);
+      return {
+        ...n,
+        id: `note_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
+        startTime: newStart,
+      };
+    });
+
+    const updated = [...notes, ...pastedNotes].sort((a, b) => a.startTime - b.startTime);
+    onChangeNotes(updated);
+    setSelectedNoteIds(pastedNotes.map((n) => n.id));
+
+    if (audioEngine) {
+      audioEngine.unlockAudio();
+      audioEngine.playSingleNote(pastedNotes[0].midiNumber, 0.4);
+    }
+
+    showToast(`音符 ${pastedNotes.length} 個を ${Math.floor(targetBeat / 4) + 1}小節 ${ (targetBeat % 4) + 1 }拍目に貼り付けました！`);
+  };
+
+  const handleDuplicate = () => {
+    const targetNotes =
+      selectedNoteIds.length > 0
+        ? notes.filter((n) => selectedNoteIds.includes(n.id))
+        : notes;
+
+    if (targetNotes.length === 0) {
+      showToast('複製する音符がありません。');
+      return;
+    }
+
+    const minClipStart = Math.min(...targetNotes.map((n) => n.startTime));
+    const maxClipEnd = Math.max(...targetNotes.map((n) => n.startTime + n.duration));
+    const span = Math.max(1, maxClipEnd - minClipStart);
+
+    const duplicatedNotes: MusicNote[] = targetNotes.map((n, idx) => ({
+      ...n,
+      id: `note_${Date.now()}_dup_${idx}_${Math.random().toString(36).substring(2, 6)}`,
+      startTime: n.startTime + span,
+    }));
+
+    const updated = [...notes, ...duplicatedNotes].sort((a, b) => a.startTime - b.startTime);
+    onChangeNotes(updated);
+    setSelectedNoteIds(duplicatedNotes.map((n) => n.id));
+
+    if (audioEngine) {
+      audioEngine.unlockAudio();
+      audioEngine.playSingleNote(duplicatedNotes[0].midiNumber, 0.4);
+    }
+
+    showToast(`音符 ${duplicatedNotes.length} 個を複製しました！`);
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedNoteIds.length === 0) return;
+    const deleteSet = new Set(selectedNoteIds);
+    const updated = notes.filter((n) => !deleteSet.has(n.id));
+    onChangeNotes(updated);
+    showToast(`選択した音符 ${selectedNoteIds.length} 個を削除しました`);
+    setSelectedNoteIds([]);
+  };
+
+  // Global Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      if (
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.getAttribute('contenteditable') === 'true')
+      ) {
+        return;
+      }
+
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+      if (isCmdOrCtrl) {
+        if (e.key.toLowerCase() === 'c') {
+          e.preventDefault();
+          handleCopy();
+        } else if (e.key.toLowerCase() === 'v') {
+          e.preventDefault();
+          handlePaste();
+        } else if (e.key.toLowerCase() === 'x') {
+          e.preventDefault();
+          handleCut();
+        } else if (e.key.toLowerCase() === 'a') {
+          e.preventDefault();
+          handleSelectAll();
+        } else if (e.key.toLowerCase() === 'd') {
+          e.preventDefault();
+          handleDuplicate();
+        }
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedNoteIds.length > 0) {
+          e.preventDefault();
+          handleDeleteSelected();
+        }
+      } else if (e.key === 'Escape') {
+        handleDeselectAll();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [notes, selectedNoteIds, clipboardNotes, hoverState]);
+
+  // Pointer down handler on a note head to initiate drag / selection
   const handleNotePointerDown = (e: React.PointerEvent<SVGGElement>, note: MusicNote) => {
     e.stopPropagation();
 
@@ -391,7 +589,35 @@ export default function StaffNotationEditor({
       return;
     }
 
+    // Update selection state
+    if (e.shiftKey) {
+      handleSelectNote(note.id, true);
+    } else if (!selectedNoteIds.includes(note.id)) {
+      setSelectedNoteIds([note.id]);
+    }
+
     const { step } = midiToStaffInfo(note.midiNumber, keySignature);
+
+    // Record initial states of all selected notes for multi-note dragging
+    const activeSelectedIds = e.shiftKey
+      ? selectedNoteIds.includes(note.id)
+        ? selectedNoteIds
+        : [...selectedNoteIds, note.id]
+      : selectedNoteIds.includes(note.id)
+      ? selectedNoteIds
+      : [note.id];
+
+    const selectedInitialStates = notes
+      .filter((n) => activeSelectedIds.includes(n.id))
+      .map((n) => {
+        const info = midiToStaffInfo(n.midiNumber, keySignature);
+        return {
+          id: n.id,
+          initialBeat: n.startTime,
+          initialStep: info.step,
+          initialMidi: n.midiNumber,
+        };
+      });
 
     dragStartRef.current = {
       noteId: note.id,
@@ -400,6 +626,7 @@ export default function StaffNotationEditor({
       initialBeat: note.startTime,
       initialMidi: note.midiNumber,
       initialStep: step,
+      selectedInitialStates,
       hasMoved: false,
       lastAudioStep: step,
     };
@@ -478,20 +705,41 @@ export default function StaffNotationEditor({
         audioEngine.playSingleNote(midi, 0.2);
       }
 
-      // Update note position & pitch
-      const updated = notes.map((n) => {
-        if (n.id === drag.noteId) {
-          return {
-            ...n,
-            startTime: snappedBeat,
-            midiNumber: midi,
-            pitch: pitch,
-          };
-        }
-        return n;
-      });
+      // Update note position & pitch (handles single note drag and multi-note drag)
+      if (drag.selectedInitialStates && drag.selectedInitialStates.length > 1) {
+        const deltaBeat = snappedBeat - drag.initialBeat;
+        const deltaStep = snappedStep - drag.initialStep;
 
-      onChangeNotes(updated);
+        const updatedMap = new Map(notes.map((n) => [n.id, n]));
+        for (const initNote of drag.selectedInitialStates) {
+          const newBeat = Math.max(0, initNote.initialBeat + deltaBeat);
+          const newStep = Math.min(16, Math.max(-2, initNote.initialStep + deltaStep));
+          const { midi, pitch } = staffStepToPitch(newStep, selectedAccidental, keySignature);
+          const existing = updatedMap.get(initNote.id);
+          if (existing) {
+            updatedMap.set(initNote.id, {
+              ...existing,
+              startTime: newBeat,
+              midiNumber: midi,
+              pitch: pitch,
+            });
+          }
+        }
+        onChangeNotes(Array.from(updatedMap.values()));
+      } else {
+        const updated = notes.map((n) => {
+          if (n.id === drag.noteId) {
+            return {
+              ...n,
+              startTime: snappedBeat,
+              midiNumber: midi,
+              pitch: pitch,
+            };
+          }
+          return n;
+        });
+        onChangeNotes(updated);
+      }
       return;
     }
 
@@ -1226,6 +1474,111 @@ export default function StaffNotationEditor({
             </div>
           </div>
 
+          {/* Note Copy / Paste / Selection Toolbar */}
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-[#25150d] rounded-xl border border-[#c19a6b]/40 text-xs text-[#e5d3b3]">
+            <div className="flex items-center space-x-1.5 flex-wrap">
+              <span className="text-[#c19a6b] font-bold flex items-center space-x-1 mr-1">
+                <span>編集・コピペ:</span>
+              </span>
+
+              {/* Copy */}
+              <button
+                onClick={handleCopy}
+                disabled={notes.length === 0}
+                className="px-2.5 py-1.5 rounded-lg bg-[#3d251a] hover:bg-[#4d3022] hover:text-[#f3e5ab] border border-[#5a3a2a] hover:border-[#c19a6b] text-[#e5d3b3] flex items-center space-x-1.5 transition-all cursor-pointer font-medium active:scale-95 disabled:opacity-40"
+                title="選択中の音符（または全音符）をコピー (Ctrl+C / Cmd+C)"
+              >
+                <Copy className="w-3.5 h-3.5 text-[#c19a6b]" />
+                <span>コピー</span>
+              </button>
+
+              {/* Paste */}
+              <button
+                onClick={handlePaste}
+                disabled={clipboardNotes.length === 0}
+                className="px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-[#8c5a2b] to-[#a66e38] hover:from-[#a66e38] hover:to-[#c18345] text-[#fff8ea] border border-[#c19a6b] flex items-center space-x-1.5 transition-all cursor-pointer font-bold shadow-sm active:scale-95 disabled:opacity-40"
+                title="コピーした音符をカーソル位置に貼り付け (Ctrl+V / Cmd+V)"
+              >
+                <ClipboardPaste className="w-3.5 h-3.5 text-[#fff]" />
+                <span>貼り付け</span>
+                {clipboardNotes.length > 0 && (
+                  <span className="bg-[#1c0f0a] text-[#f3e5ab] text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                    {clipboardNotes.length}
+                  </span>
+                )}
+              </button>
+
+              {/* Cut */}
+              <button
+                onClick={handleCut}
+                disabled={notes.length === 0}
+                className="px-2.5 py-1.5 rounded-lg bg-[#3d251a] hover:bg-[#4d3022] hover:text-[#f3e5ab] border border-[#5a3a2a] hover:border-[#c19a6b] text-[#e5d3b3] flex items-center space-x-1.5 transition-all cursor-pointer font-medium active:scale-95 disabled:opacity-40"
+                title="選択中の音符を切り取り (Ctrl+X / Cmd+X)"
+              >
+                <Scissors className="w-3.5 h-3.5 text-[#c19a6b]" />
+                <span>切り取り</span>
+              </button>
+
+              {/* Duplicate */}
+              <button
+                onClick={handleDuplicate}
+                disabled={notes.length === 0}
+                className="px-2.5 py-1.5 rounded-lg bg-[#3d251a] hover:bg-[#4d3022] hover:text-[#f3e5ab] border border-[#5a3a2a] hover:border-[#c19a6b] text-[#e5d3b3] flex items-center space-x-1.5 transition-all cursor-pointer font-medium active:scale-95 disabled:opacity-40"
+                title="選択中の音符をすぐ後ろに複製 (Ctrl+D / Cmd+D)"
+              >
+                <CopyPlus className="w-3.5 h-3.5 text-[#c19a6b]" />
+                <span>複製</span>
+              </button>
+
+              <div className="h-4 w-[1px] bg-[#3d251a] mx-1 hidden sm:block" />
+
+              {/* Select All */}
+              <button
+                onClick={handleSelectAll}
+                disabled={notes.length === 0}
+                className="px-2.5 py-1.5 rounded-lg bg-[#3d251a] hover:bg-[#4d3022] text-[#e5d3b3] border border-[#5a3a2a] flex items-center space-x-1 transition-all cursor-pointer font-medium disabled:opacity-40"
+                title="すべての音符を選択 (Ctrl+A / Cmd+A)"
+              >
+                <CheckSquare className="w-3.5 h-3.5 text-[#c19a6b]" />
+                <span>全選択</span>
+              </button>
+
+              {/* Clear Selection */}
+              {selectedNoteIds.length > 0 && (
+                <>
+                  <button
+                    onClick={handleDeselectAll}
+                    className="px-2 py-1.5 rounded-lg bg-[#3d251a] hover:bg-[#4d3022] text-[#e5d3b3]/80 border border-[#5a3a2a] flex items-center space-x-1 transition-all cursor-pointer"
+                    title="選択を解除 (Esc)"
+                  >
+                    <Square className="w-3.5 h-3.5" />
+                    <span>選択解除</span>
+                  </button>
+
+                  <button
+                    onClick={handleDeleteSelected}
+                    className="px-2.5 py-1.5 rounded-lg bg-[#531818] hover:bg-[#732222] text-[#fca5a5] border border-[#832c2c] flex items-center space-x-1 transition-all cursor-pointer font-medium"
+                    title="選択中の音符を削除 (Delete / Backspace)"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>選択削除 ({selectedNoteIds.length})</span>
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Counter & Status Info */}
+            <div className="flex items-center space-x-3 text-[11px] text-[#e5d3b3]/80 font-medium">
+              {selectedNoteIds.length > 0 ? (
+                <span className="bg-[#3d251a] text-[#f3e5ab] px-2 py-0.5 rounded-md border border-[#c19a6b]/50">
+                  選択中: {selectedNoteIds.length} 音
+                </span>
+              ) : (
+                <span className="text-[#c19a6b]">音符をクリックで選択 (Shiftで複数選択)</span>
+              )}
+            </div>
+          </div>
+
           {/* Staff Horizontal Scroll Controls & Navigation Bar */}
           <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 bg-[#25150d]/80 rounded-lg border border-[#3d251a] text-xs text-[#e5d3b3]/90 shadow-sm">
             <div className="flex items-center space-x-1.5 flex-wrap">
@@ -1530,6 +1883,7 @@ export default function StaffNotationEditor({
                 }
 
                 const isDragging = draggingNoteId === note.id;
+                const isSelected = selectedNoteIds.includes(note.id);
                 const noteKey = note.id || `note_${noteIndex}_${note.startTime}_${note.midiNumber}`;
 
                 return (
@@ -1543,8 +1897,22 @@ export default function StaffNotationEditor({
                         ? 'cursor-crosshair hover:scale-110 hover:opacity-70'
                         : 'cursor-grab hover:scale-110'
                     }`}
-                    title={`${note.pitch} (${note.startTime}拍目) - ドラッグで音高・拍を調整`}
+                    title={`${note.pitch} (${Math.floor(note.startTime / 4) + 1}小節 ${ (note.startTime % 4) + 1 }拍目) - ドラッグ移動 / クリックで選択 (Shift+クリックで複数選択)`}
                   >
+                    {/* Selection Highlight Ring */}
+                    {isSelected && (
+                      <ellipse
+                        cx={x}
+                        cy={y}
+                        rx="13"
+                        ry="10"
+                        fill="rgba(193, 154, 107, 0.3)"
+                        stroke="#d97706"
+                        strokeWidth="2"
+                        strokeDasharray="3,2"
+                        className="pointer-events-none animate-pulse"
+                      />
+                    )}
                     {/* Render Ledger Lines if applicable */}
                     {ledgerLines.map((ly, idx) => (
                       <line
