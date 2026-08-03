@@ -305,6 +305,7 @@ export function generateMIDI(notes: MusicNote[], bpm = 72): Uint8Array {
   const trackEvents: { ticks: number; type: 'on' | 'off'; midi: number; vel: number }[] = [];
 
   notes.forEach((n) => {
+    if (n.isRest) return;
     const startTicks = Math.round(n.startTime * ticksPerBeat);
     const endTicks = Math.round((n.startTime + n.duration) * ticksPerBeat);
     trackEvents.push({ ticks: startTicks, type: 'on', midi: n.midiNumber, vel: n.velocity || 90 });

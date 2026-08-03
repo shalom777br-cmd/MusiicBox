@@ -16,6 +16,7 @@ export interface MusicNote {
   isMelody?: boolean;
   isSimplified?: boolean;
   hand?: 'right' | 'left';
+  isRest?: boolean;    // true if note represents a rest (休符)
 }
 
 export interface MusicBoxSettings {

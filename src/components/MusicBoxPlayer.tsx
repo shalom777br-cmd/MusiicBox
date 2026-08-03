@@ -83,6 +83,7 @@ export default function MusicBoxPlayer({
             setTotalDurationSec(durSec);
           },
           onNoteTrigger: (note) => {
+            if (note.isRest) return;
             const midi = note.midiNumber + settings.keyShift;
             setActiveMidis((prev) => {
               const next = new Set(prev);

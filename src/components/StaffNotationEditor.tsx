@@ -200,6 +200,18 @@ export default function StaffNotationEditor({
   const [hoverState, setHoverState] = useState<{ step: number; beat: number } | null>(null);
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
   const [confirmClear, setConfirmClear] = useState<boolean>(false);
+  const [isRestMode, setIsRestMode] = useState<boolean>(false);
+
+  // Helper to get descriptive name for rests
+  const getRestName = (dur: number): string => {
+    if (dur >= 4) return '全休符 (4拍)';
+    if (dur >= 3) return '付点2分休符 (3拍)';
+    if (dur >= 2) return '2分休符 (2拍)';
+    if (dur === 1.5) return '付点4分休符 (1.5拍)';
+    if (dur === 1) return '4分休符 (1拍)';
+    if (dur <= 0.5) return '8分休符 (0.5拍)';
+    return '休符';
+  };
 
   // Helper to calculate midi to pitch string like 'C4', 'F#4', 'Bb4'
   const midiToPitchString = (midi: number): string => {
@@ -817,6 +829,9 @@ export default function StaffNotationEditor({
 
     if (editorMode === 'delete') {
       const updated = notes.filter((n) => {
+        if (n.isRest) {
+          return Math.abs(n.startTime - snappedBeat) >= 0.4;
+        }
         const info = midiToStaffInfo(n.midiNumber, keySignature);
         const sameStep = Math.abs(info.step - snappedStep) <= 0.5;
         const sameBeat = Math.abs(n.startTime - snappedBeat) < 0.4;
@@ -824,31 +839,57 @@ export default function StaffNotationEditor({
       });
       onChangeNotes(updated);
     } else {
-      if (audioEngine) {
-        audioEngine.unlockAudio();
-        audioEngine.playSingleNote(midi, selectedDuration);
-      }
+      if (isRestMode) {
+        const newRestNote: MusicNote = {
+          id: `rest_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          pitch: 'B4',
+          midiNumber: 71,
+          startTime: snappedBeat,
+          duration: selectedDuration,
+          isRest: true,
+        };
 
-      const existingIndex = notes.findIndex((n) => {
-        const info = midiToStaffInfo(n.midiNumber, keySignature);
-        return Math.abs(info.step - snappedStep) <= 0.5 && Math.abs(n.startTime - snappedBeat) < 0.4;
-      });
+        const existingIndex = notes.findIndex(
+          (n) => n.isRest && Math.abs(n.startTime - snappedBeat) < 0.4
+        );
 
-      const newNote: MusicNote = {
-        id: `staff_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-        pitch,
-        midiNumber: midi,
-        startTime: snappedBeat,
-        duration: selectedDuration,
-      };
-
-      if (existingIndex >= 0) {
-        const updated = [...notes];
-        updated[existingIndex] = newNote;
+        let updated: MusicNote[];
+        if (existingIndex >= 0) {
+          updated = [...notes];
+          updated[existingIndex] = newRestNote;
+        } else {
+          updated = [...notes, newRestNote].sort((a, b) => a.startTime - b.startTime);
+        }
         onChangeNotes(updated);
+        showToast(`${getRestName(selectedDuration)}を配置しました`);
       } else {
-        const updated = [...notes, newNote].sort((a, b) => a.startTime - b.startTime);
-        onChangeNotes(updated);
+        if (audioEngine) {
+          audioEngine.unlockAudio();
+          audioEngine.playSingleNote(midi, selectedDuration);
+        }
+
+        const existingIndex = notes.findIndex((n) => {
+          if (n.isRest) return false;
+          const info = midiToStaffInfo(n.midiNumber, keySignature);
+          return Math.abs(info.step - snappedStep) <= 0.5 && Math.abs(n.startTime - snappedBeat) < 0.4;
+        });
+
+        const newNote: MusicNote = {
+          id: `staff_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          pitch,
+          midiNumber: midi,
+          startTime: snappedBeat,
+          duration: selectedDuration,
+        };
+
+        if (existingIndex >= 0) {
+          const updated = [...notes];
+          updated[existingIndex] = newNote;
+          onChangeNotes(updated);
+        } else {
+          const updated = [...notes, newNote].sort((a, b) => a.startTime - b.startTime);
+          onChangeNotes(updated);
+        }
       }
     }
   };
@@ -1167,87 +1208,188 @@ export default function StaffNotationEditor({
         <div className="p-3 sm:p-5 space-y-4">
           {/* Tool Controls Bar */}
           <div className="flex flex-wrap items-start justify-between gap-3 p-3 bg-[#170c08] border border-[#3d251a] rounded-xl text-xs">
-            {/* Left Column: Note Duration & Accidental Selectors */}
+            {/* Left Column: Note/Rest Mode, Duration & Accidental Selectors */}
             <div className="flex flex-col gap-2.5">
-              {/* Note Duration Selector */}
+              {/* Input Mode Selector (Note vs Rest) */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[#c19a6b] font-semibold flex items-center space-x-1">
+                  <span>入力モード:</span>
+                </span>
+                <div className="inline-flex rounded-lg bg-[#25150d] p-1 border border-[#3d251a] gap-1">
+                  <button
+                    onClick={() => setIsRestMode(false)}
+                    className={`px-3 py-1 rounded-md transition-all font-bold cursor-pointer flex items-center space-x-1.5 ${
+                      !isRestMode
+                        ? 'bg-[#c19a6b] text-[#1c0f0a] shadow-sm'
+                        : 'text-[#e5d3b3]/70 hover:text-[#e5d3b3] hover:bg-[#3d251a]'
+                    }`}
+                  >
+                    <Music className="w-3.5 h-3.5" />
+                    <span>音符</span>
+                  </button>
+                  <button
+                    onClick={() => setIsRestMode(true)}
+                    className={`px-3 py-1 rounded-md transition-all font-bold cursor-pointer flex items-center space-x-1.5 ${
+                      isRestMode
+                        ? 'bg-[#c19a6b] text-[#1c0f0a] shadow-sm'
+                        : 'text-[#e5d3b3]/70 hover:text-[#e5d3b3] hover:bg-[#3d251a]'
+                    }`}
+                  >
+                    <span className="text-sm leading-none font-serif">𝄽</span>
+                    <span>休符</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Duration Selector */}
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[#c19a6b] font-semibold flex items-center space-x-1">
                   <Music className="w-3.5 h-3.5" />
-                  <span>音符の種類:</span>
+                  <span>{isRestMode ? '休符の長さ:' : '音符の長さ:'}</span>
                 </span>
 
                 <div className="inline-flex flex-wrap items-center rounded-lg bg-[#25150d] p-1 border border-[#3d251a] gap-0.5">
-                  {[
-                    {
-                      duration: 0.5,
-                      label: '8分音符 (0.5拍)',
-                      name: '8分',
-                      icon: (
-                        <svg viewBox="0 0 16 20" className="w-3.5 h-4 inline-block shrink-0">
-                          <ellipse cx="5" cy="14" rx="3.8" ry="2.6" transform="rotate(-25 5 14)" fill="currentColor" />
-                          <line x1="8.2" y1="14" x2="8.2" y2="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                          <path d="M 8.2 2 Q 13 6 8.2 10" fill="none" stroke="currentColor" strokeWidth="1.5" />
-                        </svg>
-                      ),
-                    },
-                    {
-                      duration: 1,
-                      label: '4分音符 (1拍)',
-                      name: '4分',
-                      icon: (
-                        <svg viewBox="0 0 16 20" className="w-3.5 h-4 inline-block shrink-0">
-                          <ellipse cx="5" cy="14" rx="3.8" ry="2.6" transform="rotate(-25 5 14)" fill="currentColor" />
-                          <line x1="8.2" y1="14" x2="8.2" y2="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                        </svg>
-                      ),
-                    },
-                    {
-                      duration: 1.5,
-                      label: '付点4分音符 (1.5拍)',
-                      name: '付点4分',
-                      icon: (
-                        <svg viewBox="0 0 18 20" className="w-4 h-4 inline-block shrink-0">
-                          <ellipse cx="4.5" cy="14" rx="3.8" ry="2.6" transform="rotate(-25 4.5 14)" fill="currentColor" />
-                          <line x1="7.7" y1="14" x2="7.7" y2="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                          <circle cx="12.5" cy="14" r="1.3" fill="currentColor" />
-                        </svg>
-                      ),
-                    },
-                    {
-                      duration: 2,
-                      label: '2分音符 (2拍・白抜き幹あり)',
-                      name: '2分',
-                      icon: (
-                        <svg viewBox="0 0 16 20" className="w-3.5 h-4 inline-block shrink-0">
-                          <ellipse cx="5" cy="14" rx="3.8" ry="2.6" transform="rotate(-25 5 14)" fill="none" stroke="currentColor" strokeWidth="1.6" />
-                          <line x1="8.2" y1="14" x2="8.2" y2="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                        </svg>
-                      ),
-                    },
-                    {
-                      duration: 3,
-                      label: '付点2分音符 (3拍)',
-                      name: '付点2分',
-                      icon: (
-                        <svg viewBox="0 0 18 20" className="w-4 h-4 inline-block shrink-0">
-                          <ellipse cx="4.5" cy="14" rx="3.8" ry="2.6" transform="rotate(-25 4.5 14)" fill="none" stroke="currentColor" strokeWidth="1.6" />
-                          <line x1="7.7" y1="14" x2="7.7" y2="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                          <circle cx="12.5" cy="14" r="1.3" fill="currentColor" />
-                        </svg>
-                      ),
-                    },
-                    {
-                      duration: 4,
-                      label: '全音符 (4拍・白抜き幹なし)',
-                      name: '全音',
-                      icon: (
-                        <svg viewBox="0 0 18 20" className="w-4 h-4 inline-block shrink-0">
-                          <ellipse cx="9" cy="10" rx="6.5" ry="4.2" fill="currentColor" />
-                          <ellipse cx="9" cy="10" rx="3.8" ry="1.8" fill="#25150d" transform="rotate(-35 9 10)" />
-                        </svg>
-                      ),
-                    },
-                  ].map((item) => {
+                  {(isRestMode
+                    ? [
+                        {
+                          duration: 0.5,
+                          label: '8分休符 (0.5拍)',
+                          name: '8分休符',
+                          icon: (
+                            <svg viewBox="0 0 16 20" className="w-3.5 h-4 inline-block shrink-0">
+                              <path d="M 6 4 C 2 6 1 10 4 11 C 6 12 8 10 7 8 C 9 6 7 4 7 4 Z" fill="currentColor" />
+                              <path d="M 7 4 L 3 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                            </svg>
+                          ),
+                        },
+                        {
+                          duration: 1,
+                          label: '4分休符 (1拍)',
+                          name: '4分休符',
+                          icon: (
+                            <svg viewBox="0 0 16 20" className="w-3.5 h-4 inline-block shrink-0">
+                              <path d="M 5 2 L 10 7 L 4 12 C 2 14 6 16 8 17 C 4 18 2 16 4 14 L 9 9 L 5 2 Z" fill="currentColor" />
+                            </svg>
+                          ),
+                        },
+                        {
+                          duration: 1.5,
+                          label: '付点4分休符 (1.5拍)',
+                          name: '付点4分休符',
+                          icon: (
+                            <svg viewBox="0 0 18 20" className="w-4 h-4 inline-block shrink-0">
+                              <path d="M 4 2 L 9 7 L 3 12 C 1 14 5 16 7 17 C 3 18 1 16 3 14 L 8 9 L 4 2 Z" fill="currentColor" />
+                              <circle cx="13" cy="14" r="1.5" fill="currentColor" />
+                            </svg>
+                          ),
+                        },
+                        {
+                          duration: 2,
+                          label: '2分休符 (2拍)',
+                          name: '2分休符',
+                          icon: (
+                            <svg viewBox="0 0 18 20" className="w-4 h-4 inline-block shrink-0">
+                              <line x1="1" y1="14" x2="17" y2="14" stroke="currentColor" strokeWidth="1.5" />
+                              <rect x="4" y="8" width="10" height="6" fill="currentColor" />
+                            </svg>
+                          ),
+                        },
+                        {
+                          duration: 3,
+                          label: '付点2分休符 (3拍)',
+                          name: '付点2分休符',
+                          icon: (
+                            <svg viewBox="0 0 18 20" className="w-4 h-4 inline-block shrink-0">
+                              <line x1="1" y1="15" x2="15" y2="15" stroke="currentColor" strokeWidth="1.5" />
+                              <rect x="3" y="9" width="9" height="6" fill="currentColor" />
+                              <circle cx="15" cy="12" r="1.3" fill="currentColor" />
+                            </svg>
+                          ),
+                        },
+                        {
+                          duration: 4,
+                          label: '全休符 (4拍)',
+                          name: '全休符',
+                          icon: (
+                            <svg viewBox="0 0 18 20" className="w-4 h-4 inline-block shrink-0">
+                              <line x1="1" y1="6" x2="17" y2="6" stroke="currentColor" strokeWidth="1.5" />
+                              <rect x="4" y="6" width="10" height="6" fill="currentColor" />
+                            </svg>
+                          ),
+                        },
+                      ]
+                    : [
+                        {
+                          duration: 0.5,
+                          label: '8分音符 (0.5拍)',
+                          name: '8分',
+                          icon: (
+                            <svg viewBox="0 0 16 20" className="w-3.5 h-4 inline-block shrink-0">
+                              <ellipse cx="5" cy="14" rx="3.8" ry="2.6" transform="rotate(-25 5 14)" fill="currentColor" />
+                              <line x1="8.2" y1="14" x2="8.2" y2="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                              <path d="M 8.2 2 Q 13 6 8.2 10" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                            </svg>
+                          ),
+                        },
+                        {
+                          duration: 1,
+                          label: '4分音符 (1拍)',
+                          name: '4分',
+                          icon: (
+                            <svg viewBox="0 0 16 20" className="w-3.5 h-4 inline-block shrink-0">
+                              <ellipse cx="5" cy="14" rx="3.8" ry="2.6" transform="rotate(-25 5 14)" fill="currentColor" />
+                              <line x1="8.2" y1="14" x2="8.2" y2="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                            </svg>
+                          ),
+                        },
+                        {
+                          duration: 1.5,
+                          label: '付点4分音符 (1.5拍)',
+                          name: '付点4分',
+                          icon: (
+                            <svg viewBox="0 0 18 20" className="w-4 h-4 inline-block shrink-0">
+                              <ellipse cx="4.5" cy="14" rx="3.8" ry="2.6" transform="rotate(-25 4.5 14)" fill="currentColor" />
+                              <line x1="7.7" y1="14" x2="7.7" y2="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                              <circle cx="12.5" cy="14" r="1.3" fill="currentColor" />
+                            </svg>
+                          ),
+                        },
+                        {
+                          duration: 2,
+                          label: '2分音符 (2拍・白抜き幹あり)',
+                          name: '2分',
+                          icon: (
+                            <svg viewBox="0 0 16 20" className="w-3.5 h-4 inline-block shrink-0">
+                              <ellipse cx="5" cy="14" rx="3.8" ry="2.6" transform="rotate(-25 5 14)" fill="none" stroke="currentColor" strokeWidth="1.6" />
+                              <line x1="8.2" y1="14" x2="8.2" y2="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                            </svg>
+                          ),
+                        },
+                        {
+                          duration: 3,
+                          label: '付点2分音符 (3拍)',
+                          name: '付点2分',
+                          icon: (
+                            <svg viewBox="0 0 18 20" className="w-4 h-4 inline-block shrink-0">
+                              <ellipse cx="4.5" cy="14" rx="3.8" ry="2.6" transform="rotate(-25 4.5 14)" fill="none" stroke="currentColor" strokeWidth="1.6" />
+                              <line x1="7.7" y1="14" x2="7.7" y2="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                              <circle cx="12.5" cy="14" r="1.3" fill="currentColor" />
+                            </svg>
+                          ),
+                        },
+                        {
+                          duration: 4,
+                          label: '全音符 (4拍・白抜き幹なし)',
+                          name: '全音',
+                          icon: (
+                            <svg viewBox="0 0 18 20" className="w-4 h-4 inline-block shrink-0">
+                              <ellipse cx="9" cy="10" rx="6.5" ry="4.2" fill="currentColor" />
+                              <ellipse cx="9" cy="10" rx="3.8" ry="1.8" fill="#25150d" transform="rotate(-35 9 10)" />
+                            </svg>
+                          ),
+                        },
+                      ]
+                  ).map((item) => {
                     const isSelected = selectedDuration === item.duration;
                     return (
                       <button
@@ -1268,8 +1410,8 @@ export default function StaffNotationEditor({
                 </div>
               </div>
 
-              {/* Accidental Selector (Natural, Sharp, Flat) placed directly below */}
-              <div className="flex flex-wrap items-center gap-2">
+              {/* Accidental Selector (Natural, Sharp, Flat) - disabled when in Rest mode */}
+              <div className={`flex flex-wrap items-center gap-2 transition-opacity ${isRestMode ? 'opacity-40 pointer-events-none' : ''}`}>
                 <span className="text-[#c19a6b] font-semibold flex items-center space-x-1">
                   <span>臨時記号:</span>
                 </span>
@@ -1282,6 +1424,7 @@ export default function StaffNotationEditor({
                     <button
                       key={item.acc || 'nat'}
                       onClick={() => setSelectedAccidental(item.acc)}
+                      disabled={isRestMode}
                       className={`px-2 py-1 rounded-md transition-all font-bold cursor-pointer ${
                         selectedAccidental === item.acc
                           ? 'bg-[#c19a6b] text-[#1c0f0a]'
@@ -1852,8 +1995,81 @@ export default function StaffNotationEditor({
                 />
               )}
 
-              {/* Render Existing Placed Notes */}
+              {/* Render Existing Placed Notes and Rests */}
               {notes.map((note, noteIndex) => {
+                const x = getBeatX(note.startTime);
+                const isDragging = draggingNoteId === note.id;
+                const isSelected = selectedNoteIds.includes(note.id);
+                const noteKey = note.id || `note_${noteIndex}_${note.startTime}_${note.midiNumber}`;
+
+                if (note.isRest) {
+                  const restY = getStepY(6);
+                  const dur = note.duration;
+                  const hasDot = dur === 1.5 || dur === 3 || dur === 6;
+
+                  return (
+                    <g
+                      key={noteKey}
+                      onPointerDown={(e) => handleNotePointerDown(e, note)}
+                      className={`transition-all ${
+                        isDragging
+                          ? 'cursor-grabbing opacity-90 scale-110 drop-shadow-md'
+                          : editorMode === 'delete'
+                          ? 'cursor-crosshair hover:scale-110 hover:opacity-70'
+                          : 'cursor-grab hover:scale-110'
+                      }`}
+                      title={`${getRestName(dur)} (${Math.floor(note.startTime / 4) + 1}小節 ${(note.startTime % 4) + 1}拍目) - ドラッグ移動 / クリックで選択`}
+                    >
+                      {/* Selection Highlight Ring */}
+                      {isSelected && (
+                        <rect
+                          x={x - 12}
+                          y={restY - 12}
+                          width="24"
+                          height="24"
+                          rx="4"
+                          fill="rgba(193, 154, 107, 0.3)"
+                          stroke="#d97706"
+                          strokeWidth="2"
+                          strokeDasharray="3,2"
+                          className="pointer-events-none animate-pulse"
+                        />
+                      )}
+
+                      {/* Render Rest Symbol */}
+                      {dur >= 4 ? (
+                        /* 全休符 (Whole Rest) - hangs under 4th staff line (step 8) */
+                        <g>
+                          <rect x={x - 7} y={getStepY(8)} width="14" height="6" fill="#2d1b14" />
+                          {hasDot && <circle cx={x + 11} cy={getStepY(8) + 3} r="1.8" fill="#2d1b14" />}
+                        </g>
+                      ) : dur >= 2 ? (
+                        /* 2分休符 (Half Rest) - sits on 3rd staff line (step 6) */
+                        <g>
+                          <rect x={x - 7} y={getStepY(6) - 6} width="14" height="6" fill="#2d1b14" />
+                          {hasDot && <circle cx={x + 11} cy={getStepY(6) - 3} r="1.8" fill="#2d1b14" />}
+                        </g>
+                      ) : dur <= 0.5 ? (
+                        /* 8分休符 (8th Rest) */
+                        <g transform={`translate(${x}, ${restY})`}>
+                          <path d="M 0 -8 C -4 -6 -5 -2 -2 -1 C 0 0 2 -2 1 -4 C 3 -6 1 -8 1 -8 Z" fill="#2d1b14" />
+                          <path d="M 1 -8 L -3 9" stroke="#2d1b14" strokeWidth="2.2" strokeLinecap="round" />
+                          {hasDot && <circle cx={8} cy={0} r="1.8" fill="#2d1b14" />}
+                        </g>
+                      ) : (
+                        /* 4分休符 (Quarter Rest) */
+                        <g>
+                          <path
+                            d={`M ${x - 2} ${restY - 13} L ${x + 3} ${restY - 7} L ${x - 3} ${restY - 1} C ${x - 6} ${restY + 2} ${x - 1} ${restY + 6} ${x + 2} ${restY + 7} C ${x - 3} ${restY + 9} ${x - 5} ${restY + 12} ${x - 2} ${restY + 15} C ${x} ${restY + 13} ${x - 2} ${restY + 10} ${x} ${restY + 8} C ${x + 3} ${restY + 5} ${x + 1} ${restY + 1} ${x - 2} ${restY - 2} L ${x + 2} ${restY - 7} Z`}
+                            fill="#2d1b14"
+                          />
+                          {hasDot && <circle cx={x + 9} cy={restY + 2} r="1.8" fill="#2d1b14" />}
+                        </g>
+                      )}
+                    </g>
+                  );
+                }
+
                 const { step, accidental } = midiToStaffInfo(note.midiNumber, keySignature);
                 const keyAccidental = getKeySignatureAccidentalForStep(step, keySignature);
 
@@ -1864,7 +2080,6 @@ export default function StaffNotationEditor({
                   else if (accidental === '' && keyAccidental !== '') displayAccidental = '♮';
                 }
 
-                const x = getBeatX(note.startTime);
                 const y = getStepY(step);
                 const isStemDown = step >= 6; // Stem goes down for B4 (step 6) and above
 
@@ -1881,10 +2096,6 @@ export default function StaffNotationEditor({
                     ledgerLines.push(getStepY(s));
                   }
                 }
-
-                const isDragging = draggingNoteId === note.id;
-                const isSelected = selectedNoteIds.includes(note.id);
-                const noteKey = note.id || `note_${noteIndex}_${note.startTime}_${note.midiNumber}`;
 
                 return (
                   <g
@@ -2021,81 +2232,111 @@ export default function StaffNotationEditor({
                 );
               })}
 
-              {/* Hover Preview Ghost Note */}
+              {/* Hover Preview Ghost Note or Rest */}
               {hoverState && editorMode === 'add' && (
                 <g opacity="0.6" className="pointer-events-none">
-                  {(() => {
-                    const x = getBeatX(hoverState.beat);
-                    const y = getStepY(hoverState.step);
-                    const isStemDown = hoverState.step >= 6;
-                    const hasHoverStem = selectedDuration < 4;
-                    const hasHoverFlag = selectedDuration <= 0.5;
-                    const hasHoverDot = selectedDuration === 1.5 || selectedDuration === 3;
+                  {isRestMode ? (
+                    (() => {
+                      const x = getBeatX(hoverState.beat);
+                      const restY = getStepY(6);
+                      const dur = selectedDuration;
+                      const hasHoverDot = dur === 1.5 || dur === 3 || dur === 6;
 
-                    return (
-                      <g key="hover_ghost_shapes">
-                        {selectedDuration >= 4 ? (
-                          /* 全音符 (Whole Note Ghost) */
-                          <g transform={`translate(${x}, ${y})`}>
-                            <ellipse cx="0" cy="0" rx="8.5" ry="5.5" fill="#c19a6b" />
-                            <ellipse cx="0" cy="0" rx="5.0" ry="2.3" fill="#f7f3e9" transform="rotate(-40)" />
-                          </g>
-                        ) : selectedDuration >= 2 ? (
-                          /* 2分音符 (Half Note Ghost) */
-                          <ellipse
-                            cx={x}
-                            cy={y}
-                            rx="6.8"
-                            ry="4.5"
-                            fill="#f7f3e9"
-                            stroke="#c19a6b"
-                            strokeWidth="2.5"
-                            transform={`rotate(-25 ${x} ${y})`}
-                          />
-                        ) : (
-                          /* 4分音符 / 8分音符 (Quarter / 8th Note Ghost) */
-                          <ellipse
-                            cx={x}
-                            cy={y}
-                            rx="6.5"
-                            ry="4.5"
-                            fill="#c19a6b"
-                            transform={`rotate(-25 ${x} ${y})`}
-                          />
-                        )}
-                        {hasHoverDot && (
-                          <circle
-                            cx={x + (selectedDuration >= 4 ? 11 : 9)}
-                            cy={y - 1}
-                            r="1.8"
-                            fill="#c19a6b"
-                          />
-                        )}
-                        {hasHoverStem && (
-                          <line
-                            x1={isStemDown ? x - 6 : x + 6}
-                            y1={y}
-                            x2={isStemDown ? x - 6 : x + 6}
-                            y2={isStemDown ? y + 26 : y - 26}
-                            stroke="#c19a6b"
-                            strokeWidth="1.5"
-                          />
-                        )}
-                        {hasHoverFlag && (
-                          <path
-                            d={
-                              isStemDown
-                                ? `M ${x - 6} ${y + 26} Q ${x} ${y + 20}, ${x + 6} ${y + 16}`
-                                : `M ${x + 6} ${y - 26} Q ${x + 12} ${y - 20}, ${x + 6} ${y - 14}`
-                            }
-                            fill="none"
-                            stroke="#c19a6b"
-                            strokeWidth="2"
-                          />
-                        )}
-                      </g>
-                    );
-                  })()}
+                      return (
+                        <g key="hover_rest_ghost">
+                          {dur >= 4 ? (
+                            <rect x={x - 7} y={getStepY(8)} width="14" height="6" fill="#c19a6b" />
+                          ) : dur >= 2 ? (
+                            <rect x={x - 7} y={getStepY(6) - 6} width="14" height="6" fill="#c19a6b" />
+                          ) : dur <= 0.5 ? (
+                            <g transform={`translate(${x}, ${restY})`}>
+                              <path d="M 0 -8 C -4 -6 -5 -2 -2 -1 C 0 0 2 -2 1 -4 C 3 -6 1 -8 1 -8 Z" fill="#c19a6b" />
+                              <path d="M 1 -8 L -3 9" stroke="#c19a6b" strokeWidth="2.2" strokeLinecap="round" />
+                            </g>
+                          ) : (
+                            <path
+                              d={`M ${x - 2} ${restY - 13} L ${x + 3} ${restY - 7} L ${x - 3} ${restY - 1} C ${x - 6} ${restY + 2} ${x - 1} ${restY + 6} ${x + 2} ${restY + 7} C ${x - 3} ${restY + 9} ${x - 5} ${restY + 12} ${x - 2} ${restY + 15} C ${x} ${restY + 13} ${x - 2} ${restY + 10} ${x} ${restY + 8} C ${x + 3} ${restY + 5} ${x + 1} ${restY + 1} ${x - 2} ${restY - 2} L ${x + 2} ${restY - 7} Z`}
+                              fill="#c19a6b"
+                            />
+                          )}
+                          {hasHoverDot && <circle cx={x + 9} cy={restY + 2} r="1.8" fill="#c19a6b" />}
+                        </g>
+                      );
+                    })()
+                  ) : (
+                    (() => {
+                      const x = getBeatX(hoverState.beat);
+                      const y = getStepY(hoverState.step);
+                      const isStemDown = hoverState.step >= 6;
+                      const hasHoverStem = selectedDuration < 4;
+                      const hasHoverFlag = selectedDuration <= 0.5;
+                      const hasHoverDot = selectedDuration === 1.5 || selectedDuration === 3;
+
+                      return (
+                        <g key="hover_ghost_shapes">
+                          {selectedDuration >= 4 ? (
+                            /* 全音符 (Whole Note Ghost) */
+                            <g transform={`translate(${x}, ${y})`}>
+                              <ellipse cx="0" cy="0" rx="8.5" ry="5.5" fill="#c19a6b" />
+                              <ellipse cx="0" cy="0" rx="5.0" ry="2.3" fill="#f7f3e9" transform="rotate(-40)" />
+                            </g>
+                          ) : selectedDuration >= 2 ? (
+                            /* 2分音符 (Half Note Ghost) */
+                            <ellipse
+                              cx={x}
+                              cy={y}
+                              rx="6.8"
+                              ry="4.5"
+                              fill="#f7f3e9"
+                              stroke="#c19a6b"
+                              strokeWidth="2.5"
+                              transform={`rotate(-25 ${x} ${y})`}
+                            />
+                          ) : (
+                            /* 4分音符 / 8分音符 (Quarter / 8th Note Ghost) */
+                            <ellipse
+                              cx={x}
+                              cy={y}
+                              rx="6.5"
+                              ry="4.5"
+                              fill="#c19a6b"
+                              transform={`rotate(-25 ${x} ${y})`}
+                            />
+                          )}
+                          {hasHoverDot && (
+                            <circle
+                              cx={x + (selectedDuration >= 4 ? 11 : 9)}
+                              cy={y - 1}
+                              r="1.8"
+                              fill="#c19a6b"
+                            />
+                          )}
+                          {hasHoverStem && (
+                            <line
+                              x1={isStemDown ? x - 6 : x + 6}
+                              y1={y}
+                              x2={isStemDown ? x - 6 : x + 6}
+                              y2={isStemDown ? y + 26 : y - 26}
+                              stroke="#c19a6b"
+                              strokeWidth="1.5"
+                            />
+                          )}
+                          {hasHoverFlag && (
+                            <path
+                              d={
+                                isStemDown
+                                  ? `M ${x - 6} ${y + 26} Q ${x} ${y + 20}, ${x + 6} ${y + 16}`
+                                  : `M ${x + 6} ${y - 26} Q ${x + 12} ${y - 20}, ${x + 6} ${y - 14}`
+                              }
+                              fill="none"
+                              stroke="#c19a6b"
+                              strokeWidth="2"
+                            />
+                          )}
+                        </g>
+                      );
+                    })()
+                  )}
                 </g>
               )}
             </svg>

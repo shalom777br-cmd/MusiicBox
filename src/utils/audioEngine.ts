@@ -384,7 +384,7 @@ export class MusicBoxAudioEngine {
 
     // Schedule all notes from startBeat onwards
     notes.forEach((note) => {
-      if (note.startTime >= startBeat - 0.01) {
+      if (!note.isRest && note.startTime >= startBeat - 0.01) {
         const noteTimeReal = this.startTimeReal + note.startTime * secPerBeat;
         const shiftedMidi = note.midiNumber + this.settings.keyShift;
 
@@ -510,6 +510,7 @@ export class MusicBoxAudioEngine {
     revGain.connect(offlineCtx.destination);
 
     notes.forEach((note) => {
+      if (note.isRest) return;
       const startTime = note.startTime * secPerBeat;
       const shiftedMidi = note.midiNumber + settings.keyShift;
       const freq = midiToFreq(shiftedMidi);
