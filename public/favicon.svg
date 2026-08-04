@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2d1b14"/>
+      <stop offset="100%" stop-color="#120805"/>
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e5d3b3"/>
+      <stop offset="50%" stop-color="#c19a6b"/>
+      <stop offset="100%" stop-color="#8c6239"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded box -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#bgGrad)" stroke="#c19a6b" stroke-width="2"/>
+
+  <!-- Music Box Lid (Open) -->
+  <path d="M 14 26 L 36 10 C 44 8, 52 14, 50 24 L 28 32 Z" fill="#3d251a" stroke="url(#goldGrad)" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- Music Box Body -->
+  <path d="M 12 30 L 32 24 L 46 29 L 46 48 L 26 55 L 12 48 Z" fill="#25150d" stroke="url(#goldGrad)" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- Front Divider Line -->
+  <path d="M 26 31 L 26 55" stroke="url(#goldGrad)" stroke-width="2"/>
+
+  <!-- Musical Note ♪ on Front Panel -->
+  <ellipse cx="18" cy="45" rx="2.5" ry="1.8" transform="rotate(-20 18 45)" fill="url(#goldGrad)"/>
+  <line x1="20" y1="44" x2="20" y2="36" stroke="url(#goldGrad)" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M 20 36 Q 23 38, 24 37" fill="none" stroke="url(#goldGrad)" stroke-width="1.8" stroke-linecap="round"/>
+
+  <!-- Crank Handle on Right Side -->
+  <path d="M 46 40 L 53 40 L 53 47 L 57 47" fill="none" stroke="url(#goldGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="57" cy="47" r="2" fill="#e5d3b3"/>
+
+  <!-- Sparkles -->
+  <path d="M 22 14 L 23 11 L 24 14 L 27 15 L 24 16 L 23 19 L 22 16 L 19 15 Z" fill="#e5d3b3" opacity="0.9"/>
+  <circle cx="44" cy="16" r="1.5" fill="#e5d3b3" opacity="0.8"/>
+</svg>
