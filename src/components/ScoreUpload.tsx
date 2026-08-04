@@ -31,6 +31,7 @@ export default function ScoreUpload({
   const [isDragging, setIsDragging] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [copyrightAgreed, setCopyrightAgreed] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -54,6 +55,10 @@ export default function ScoreUpload({
 
   // Process File Upload (PDF, JPG, PNG, MusicXML, MIDI)
   const processFile = async (file: File) => {
+    if (!copyrightAgreed) {
+      setErrorMsg('アップロード前に著作権に関する同意チェックボックスを有効にしてください。');
+      return;
+    }
     setErrorMsg(null);
     const fileName = file.name;
     const ext = fileName.split('.').pop()?.toLowerCase();
@@ -103,7 +108,7 @@ export default function ScoreUpload({
             timeSignature: meta.timeSignature || '4/4',
             originalBpm: meta.originalBpm || 72,
             keySignature: 'C Major',
-            summary: `MusicXML解析完了: 全${notes.length}音の楽譜要素を検出しました。`,
+            summary: `MusicXML解析完了:全${notes.length}音の楽譜要素を検出しました。`,
           },
           notes
         );
@@ -125,9 +130,15 @@ export default function ScoreUpload({
             const base64Data = dataUrl.split(',')[1];
             const mimeType = file.type || (ext === 'pdf' ? 'application/pdf' : 'image/png');
 
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            const sessionToken = (window as any).__SESSION_TOKEN;
+            if (sessionToken) {
+              headers['x-session-token'] = sessionToken;
+            }
+
             const response = await fetch('/api/parse-music', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers,
               body: JSON.stringify({
                 fileData: base64Data,
                 mimeType,
@@ -209,6 +220,22 @@ export default function ScoreUpload({
 
   return (
     <div className="bg-[#2d1b14] border border-[#3d251a] rounded-2xl p-3.5 sm:p-4 shadow-lg backdrop-blur-md space-y-3">
+      {/* Copyright Agreement Checkbox */}
+      <label className="flex items-start gap-2 text-xs text-[#e5d3b3]/90 bg-[#1c0f0a] border border-[#3d251a] p-2.5 rounded-xl cursor-pointer hover:border-[#c19a6b]/40 transition-colors">
+        <input
+          type="checkbox"
+          checked={copyrightAgreed}
+          onChange={(e) => {
+            setCopyrightAgreed(e.target.checked);
+            if (e.target.checked) setErrorMsg(null);
+          }}
+          className="w-4 h-4 mt-0.5 rounded accent-[#c19a6b] shrink-0 cursor-pointer"
+        />
+        <span>
+          アップロードする楽譜は、私的利用の範囲内であることを確認します。著作権保護中の楽曲の無断商用利用は禁止されています。
+        </span>
+      </label>
+
       {/* Upload Drag & Drop Area (Compact horizontal layout) */}
       <div
         onDragOver={(e) => {

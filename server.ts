@@ -3,6 +3,9 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
+import cookieParser from "cookie-parser";
+import { rateLimitMiddleware } from "./api/_utils/rateLimit";
+import { turnstileMiddleware, verifySessionToken, generateSessionToken } from "./api/_utils/auth";
 
 dotenv.config();
 
@@ -87,6 +90,19 @@ async function startServer() {
 
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.use(cookieParser());
+
+  // Session token issuance
+  app.get("/api/session", (req, res) => {
+    const token = generateSessionToken();
+    res.cookie("session_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    });
+    res.json({ success: true, session_token: token });
+  });
 
   // Health check
   app.get("/api/health", (req, res) => {
@@ -94,7 +110,12 @@ async function startServer() {
   });
 
   // API 1: Parse uploaded score (Image/PDF/Text) using Gemini OCR & Music Analysis
-  app.post("/api/parse-music", async (req, res) => {
+  app.post(
+    "/api/parse-music",
+    rateLimitMiddleware("parse"),
+    verifySessionToken,
+    turnstileMiddleware,
+    async (req, res) => {
     res.setHeader("Content-Type", "application/json");
     try {
       const { fileData, mimeType, fileName, textContent } = req.body;
@@ -229,7 +250,12 @@ Return ONLY JSON matching this structure:
   });
 
   // API: Parse user's recorded humming audio using Gemini Audio Understanding
-  app.post("/api/parse-humming", async (req, res) => {
+  app.post(
+    "/api/parse-humming",
+    rateLimitMiddleware("humming"),
+    verifySessionToken,
+    turnstileMiddleware,
+    async (req, res) => {
     res.setHeader("Content-Type", "application/json");
     try {
       const { audioData, mimeType = "audio/webm" } = req.body;
@@ -347,7 +373,11 @@ Return ONLY JSON matching this exact structure:
   });
 
   // API 2: Optimize note arrangement specifically for music box limitations using Gemini AI
-  app.post("/api/optimize-musicbox", async (req, res) => {
+  app.post(
+    "/api/optimize-musicbox",
+    rateLimitMiddleware("general"),
+    verifySessionToken,
+    async (req, res) => {
     res.setHeader("Content-Type", "application/json");
     try {
       const { title, notes, combCount = 18, settings } = req.body;

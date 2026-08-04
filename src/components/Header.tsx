@@ -1,7 +1,11 @@
 import React from 'react';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, BookOpen } from 'lucide-react';
 
-export default function Header() {
+interface HeaderProps {
+  onOpenLibrary?: () => void;
+}
+
+export default function Header({ onOpenLibrary }: HeaderProps) {
   return (
     <header className="relative bg-[#1c0f0a] border-b border-[#3d251a] py-5 px-6 sm:px-10 text-[#e5d3b3]">
       {/* Decorative Top Gold Trim */}
@@ -29,6 +33,17 @@ export default function Header() {
             </p>
           </div>
         </div>
+
+        {/* Right side controls: Library Button */}
+        {onOpenLibrary && (
+          <button
+            onClick={onOpenLibrary}
+            className="px-4 py-2 bg-[#2d1b14] hover:bg-[#3d251a] border border-[#3d251a] hover:border-[#c19a6b]/50 text-[#e5d3b3] hover:text-[#c19a6b] rounded-xl text-xs font-semibold transition-all flex items-center space-x-2 shadow-sm cursor-pointer"
+          >
+            <BookOpen className="w-4 h-4 text-[#c19a6b]" />
+            <span>マイ書庫 (履歴)</span>
+          </button>
+        )}
       </div>
     </header>
   );

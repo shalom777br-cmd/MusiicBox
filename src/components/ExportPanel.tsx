@@ -10,6 +10,7 @@ import {
   Pause,
   Volume2,
   Info,
+  AlertCircle,
 } from 'lucide-react';
 import { MusicNote, MusicBoxSettings, ScoreMeta } from '../types';
 import { generateMIDI } from '../utils/musicParsers';
@@ -19,11 +20,14 @@ interface ExportPanelProps {
   notes: MusicNote[];
   settings: MusicBoxSettings;
   meta: ScoreMeta;
+  copyrightWarning?: 'ok' | 'caution' | 'warning';
 }
 
-export default function ExportPanel({ notes, settings, meta }: ExportPanelProps) {
+export default function ExportPanel({ notes, settings, meta, copyrightWarning }: ExportPanelProps) {
   const [isExportingWav, setIsExportingWav] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState<string | null>(null);
+
+  const isExportDisabled = copyrightWarning === 'warning';
 
   // WAV Preview State
   const [wavAudioUrl, setWavAudioUrl] = useState<string | null>(null);
@@ -161,15 +165,36 @@ export default function ExportPanel({ notes, settings, meta }: ExportPanelProps)
         )}
       </div>
 
-      {/* Safari Compatibility Notice */}
-      <div className="p-3.5 rounded-2xl bg-[#1c0f0a]/80 border border-[#3d251a] flex items-start space-x-3 text-xs text-[#e5d3b3]/80">
-        <Info className="w-4 h-4 text-[#c19a6b] shrink-0 mt-0.5" />
-        <div className="space-y-1">
-          <p className="font-semibold text-[#c19a6b]">Safari / iOS で音が出ない場合のチェック:</p>
-          <ul className="list-disc list-inside space-y-0.5 text-[11px] text-[#e5d3b3]/70">
-            <li>iPhone / iPad の「マナーモード（サイレントスイッチ）」がONの場合、Safariは消音になります。サイドスイッチを解除して音量を上げてください。</li>
-            <li>「再生」または上部の試聴ボタンを押すとWeb Audioエンジンが自動起動します。</li>
-          </ul>
+      {/* Safari Compatibility Notice & Copyright Alert */}
+      <div className="space-y-2">
+        {isExportDisabled && (
+          <div className="p-3.5 rounded-2xl bg-red-950/80 border border-red-800 flex items-start space-x-3 text-xs text-red-200">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-red-300">⚠ エクスポート制限中</p>
+              <p className="text-[11px] text-red-200/90">
+                著作権保護中の楽曲のため、ファイルエクスポート（WAV/MIDI/JSON）が制限されています。個人利用の範囲内でアプリ上での再生・試聴をお楽しみください。
+              </p>
+            </div>
+          </div>
+        )}
+
+        {copyrightWarning === 'caution' && !isExportDisabled && (
+          <div className="p-3 rounded-xl bg-amber-950/70 border border-amber-800 text-amber-200 text-xs flex items-center space-x-2">
+            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>⚠ 作曲家の著作権状況が確認できません。個人利用の範囲内でご利用ください。</span>
+          </div>
+        )}
+
+        <div className="p-3.5 rounded-2xl bg-[#1c0f0a]/80 border border-[#3d251a] flex items-start space-x-3 text-xs text-[#e5d3b3]/80">
+          <Info className="w-4 h-4 text-[#c19a6b] shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-semibold text-[#c19a6b]">Safari / iOS で音が出ない場合のチェック:</p>
+            <ul className="list-disc list-inside space-y-0.5 text-[11px] text-[#e5d3b3]/70">
+              <li>iPhone / iPad の「マナーモード（サイレントスイッチ）」がONの場合、Safariは消音になります。サイドスイッチを解除して音量を上げてください。</li>
+              <li>「再生」または上部の試聴ボタンを押すとWeb Audioエンジンが自動起動します。</li>
+            </ul>
+          </div>
         </div>
       </div>
 
@@ -178,8 +203,8 @@ export default function ExportPanel({ notes, settings, meta }: ExportPanelProps)
         {/* WAV Download Button */}
         <button
           onClick={handleDownloadWAV}
-          disabled={isExportingWav || notes.length === 0}
-          className="p-4 rounded-2xl border border-[#c19a6b] bg-[#c19a6b] text-[#1c0f0a] hover:bg-[#d4ac7d] text-left transition-all shadow-md flex items-start space-x-3 cursor-pointer disabled:opacity-50 hover:scale-[1.01]"
+          disabled={isExportDisabled || isExportingWav || notes.length === 0}
+          className="p-4 rounded-2xl border border-[#c19a6b] bg-[#c19a6b] text-[#1c0f0a] hover:bg-[#d4ac7d] text-left transition-all shadow-md flex items-start space-x-3 cursor-pointer disabled:opacity-40 disabled:pointer-events-none hover:scale-[1.01]"
         >
           <div className="p-2.5 bg-[#1c0f0a] rounded-xl text-[#c19a6b] shrink-0 mt-0.5">
             {isExportingWav ? (
@@ -196,7 +221,11 @@ export default function ExportPanel({ notes, settings, meta }: ExportPanelProps)
               </span>
             </div>
             <p className="text-xs text-[#1c0f0a]/80 mt-1">
-              {isExportingWav ? 'Web Audio レンダリング中...' : '高音質リアルタイムオルゴール音声 (.wav)'}
+              {isExportDisabled
+                ? '⚠ 著作権制限'
+                : isExportingWav
+                ? 'Web Audio レンダリング中...'
+                : '高音質リアルタイムオルゴール音声 (.wav)'}
             </p>
           </div>
         </button>
@@ -204,8 +233,8 @@ export default function ExportPanel({ notes, settings, meta }: ExportPanelProps)
         {/* MIDI Download Button */}
         <button
           onClick={handleDownloadMIDI}
-          disabled={notes.length === 0}
-          className="p-4 rounded-2xl border border-[#c19a6b] bg-[#1c0f0a] text-[#c19a6b] hover:bg-[#3d251a] text-left transition-all shadow-md flex items-start space-x-3 cursor-pointer disabled:opacity-50 hover:scale-[1.01]"
+          disabled={isExportDisabled || notes.length === 0}
+          className="p-4 rounded-2xl border border-[#c19a6b] bg-[#1c0f0a] text-[#c19a6b] hover:bg-[#3d251a] text-left transition-all shadow-md flex items-start space-x-3 cursor-pointer disabled:opacity-40 disabled:pointer-events-none hover:scale-[1.01]"
         >
           <div className="p-2.5 bg-[#2d1b14] rounded-xl border border-[#3d251a] text-[#c19a6b] shrink-0 mt-0.5">
             <Music className="w-5 h-5" />
@@ -218,7 +247,7 @@ export default function ExportPanel({ notes, settings, meta }: ExportPanelProps)
               </span>
             </div>
             <p className="text-xs text-[#e5d3b3]/60 mt-1">
-              DTM・各種音楽ソフトで編集可能なMIDIファイル
+              {isExportDisabled ? '⚠ 著作権制限' : 'DTM・各種音楽ソフトで編集可能なMIDIファイル'}
             </p>
           </div>
         </button>
@@ -226,8 +255,8 @@ export default function ExportPanel({ notes, settings, meta }: ExportPanelProps)
         {/* JSON Download Button */}
         <button
           onClick={handleDownloadJSON}
-          disabled={notes.length === 0}
-          className="p-4 rounded-2xl border border-[#3d251a] hover:border-[#c19a6b]/50 bg-[#1c0f0a] text-[#e5d3b3] hover:bg-[#3d251a] text-left transition-all shadow-md flex items-start space-x-3 cursor-pointer disabled:opacity-50 hover:scale-[1.01]"
+          disabled={isExportDisabled || notes.length === 0}
+          className="p-4 rounded-2xl border border-[#3d251a] hover:border-[#c19a6b]/50 bg-[#1c0f0a] text-[#e5d3b3] hover:bg-[#3d251a] text-left transition-all shadow-md flex items-start space-x-3 cursor-pointer disabled:opacity-40 disabled:pointer-events-none hover:scale-[1.01]"
         >
           <div className="p-2.5 bg-[#2d1b14] rounded-xl border border-[#3d251a] text-[#c19a6b] shrink-0 mt-0.5">
             <FileCode className="w-5 h-5" />
@@ -240,7 +269,7 @@ export default function ExportPanel({ notes, settings, meta }: ExportPanelProps)
               </span>
             </div>
             <p className="text-xs text-[#e5d3b3]/60 mt-1">
-              音律・設定パラメーターを含む構造化データ
+              {isExportDisabled ? '⚠ 著作権制限' : '音律・設定パラメーターを含む構造化データ'}
             </p>
           </div>
         </button>

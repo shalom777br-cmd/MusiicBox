@@ -8,6 +8,14 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    <script>
+      fetch('/api/session').then(r => r.json()).then(data => {
+        if (data && data.session_token) {
+          window.__SESSION_TOKEN = data.session_token;
+        }
+      }).catch(err => console.error('Session fetch error:', err));
+    </script>
   </body>
 </html>
 
